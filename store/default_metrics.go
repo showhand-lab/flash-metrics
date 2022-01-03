@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	argSliceP = ArgSlicePool{}
+	interfaceSliceP = InterfaceSlicePool{}
 )
 
 type DefaultMetricStorage struct {
@@ -60,13 +60,142 @@ func (d *DefaultMetricStorage) Store(timeSeries TimeSeries) error {
 	return d.insertData(tsid, timeSeries)
 }
 
-func (d *DefaultMetricStorage) Query(start, end int64, metricsName string, matchers []Matcher) (*TimeSeries, error) {
-	panic("implement me")
+// Query implements interface MetricStorage
+//
+// SELECT
+//    tsid, label0, label1, ts, v
+//  FROM
+//    flash_metrics_index
+//    INNER JOIN flash_metrics_update ON (_tidb_rowid = tsid)
+//    INNER JOIN flash_metrics_data USING (tsid)
+//  WHERE
+//    metric_name = "xxx"
+//    AND label0 != "yyy"
+//    AND label1 LIKE "zzz"
+//    AND DATE(start_ts) <= updated_date AND updated_date <= DATE(end_ts)
+//    AND start_ts <= ts AND ts <= end_ts;
+func (d *DefaultMetricStorage) Query(start, end int64, metricsName string, matchers []Matcher) ([]TimeSeries, error) {
+	m, err := d.QueryMeta(metricsName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check query label exists. If contains non-exist label in matchers, return empty set.
+	for _, matcher := range matchers {
+		if _, ok := m.Labels[metas.LabelName(matcher.LabelName)]; !ok {
+			return nil, nil
+		}
+	}
+
+	args := interfaceSliceP.Get()
+	defer interfaceSliceP.Put(args)
+
+	var sb strings.Builder
+	sb.WriteString("SELECT tsid, ")
+	names := make([]string, 0, len(m.Labels))
+	for n, v := range m.Labels {
+		sb.WriteString("label")
+		sb.WriteString(strconv.Itoa(int(v)))
+		sb.WriteString(", ")
+		names = append(names, string(n))
+	}
+	sb.WriteString("ts, v\n")
+	sb.WriteString(`
+FROM
+  flash_metrics_index
+  INNER JOIN flash_metrics_update ON (_tidb_rowid = tsid)
+  INNER JOIN flash_metrics_data USING (tsid)
+WHERE
+  metric_name = ?
+`)
+	*args = append(*args, metricsName)
+
+	for _, matcher := range matchers {
+		labelID := m.Labels[metas.LabelName(matcher.LabelName)]
+		sb.WriteString("AND label")
+		sb.WriteString(strconv.Itoa(int(labelID)))
+
+		if matcher.IsLike {
+			if matcher.IsNegative {
+				sb.WriteString(" NOT LIKE ?\n")
+			} else {
+				sb.WriteString(" LIKE ?\n")
+			}
+		} else {
+			if matcher.IsNegative {
+				sb.WriteString(" != ?\n")
+			} else {
+				sb.WriteString(" = ?\n")
+			}
+		}
+		*args = append(*args, matcher.LabelValue)
+	}
+
+	sb.WriteString("AND ? <= updated_date AND updated_date <= ?\n")
+	*args = append(*args, time.Unix(start, 0).UTC().Format("2006-01-02"))
+	*args = append(*args, time.Unix(end, 0).UTC().Format("2006-01-02"))
+	sb.WriteString("AND ? <= ts AND ts <= ?;")
+	*args = append(*args, time.Unix(start, 0).UTC().Format(time.RFC3339))
+	*args = append(*args, time.Unix(end, 0).UTC().Format(time.RFC3339))
+
+	rows, err := d.db.Query(sb.String(), *args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	dest := interfaceSliceP.Get()
+	defer interfaceSliceP.Put(dest)
+	for i := 0; i < len(m.Labels)+3; i++ {
+		*dest = append(*dest, nil)
+	}
+
+	destP := interfaceSliceP.Get()
+	defer interfaceSliceP.Put(destP)
+	for i := range *dest {
+		*destP = append(*destP, &(*dest)[i])
+	}
+
+	var res []TimeSeries
+	tsid := int64(0)
+	var timeSeries *TimeSeries
+	for rows.Next() {
+		if err = rows.Scan(*destP...); err != nil {
+			return nil, err
+		}
+
+		curTSID := (*dest)[0].(int64)
+		if tsid != curTSID {
+			tsid = curTSID
+			res = append(res, TimeSeries{})
+			timeSeries = &res[len(res)-1]
+			timeSeries.Name = metricsName
+
+			i := 1
+			for _, name := range names {
+				timeSeries.Labels = append(timeSeries.Labels, Label{
+					Name:  name,
+					Value: string((*dest)[i].([]byte)),
+				})
+				i += 1
+			}
+		}
+
+		ts := (*dest)[len(*dest)-2].(time.Time).Unix()
+		v := (*dest)[len(*dest)-1].(float64)
+		timeSeries.Samples = append(timeSeries.Samples, Sample{
+			Timestamp: ts,
+			Value:     v,
+		})
+	}
+
+	return res, nil
 }
 
+// INSERT IGNORE INTO flash_metrics_index (metric_name, label0, label1) VALUES (?, ?, ?);
 func (d *DefaultMetricStorage) insertIndex(timeSeries TimeSeries, m *metas.Meta) error {
-	args := argSliceP.Get()
-	defer argSliceP.Put(args)
+	args := interfaceSliceP.Get()
+	defer interfaceSliceP.Put(args)
 	var sb strings.Builder
 
 	sb.WriteString("INSERT IGNORE INTO flash_metrics_index (metric_name")
@@ -86,9 +215,10 @@ func (d *DefaultMetricStorage) insertIndex(timeSeries TimeSeries, m *metas.Meta)
 	return err
 }
 
+// SELECT _tidb_rowid FROM flash_metrics_index WHERE metric_name = ? AND label0 = ? AND label1 = ?;
 func (d *DefaultMetricStorage) getTSID(timeSeries TimeSeries, m *metas.Meta) (int64, error) {
-	args := argSliceP.Get()
-	defer argSliceP.Put(args)
+	args := interfaceSliceP.Get()
+	defer interfaceSliceP.Put(args)
 	var sb strings.Builder
 
 	sb.WriteString("SELECT _tidb_rowid FROM flash_metrics_index WHERE metric_name = ?")
@@ -109,6 +239,7 @@ func (d *DefaultMetricStorage) getTSID(timeSeries TimeSeries, m *metas.Meta) (in
 	return res, nil
 }
 
+// INSERT IGNORE INTO flash_metrics_update (tsid, updated_date) VALUES (?, ?), (?, ?), (?, ?);
 func (d *DefaultMetricStorage) insertUpdatedDate(tsid int64, timeSeries TimeSeries) error {
 	dates := map[string]struct{}{}
 	for _, s := range timeSeries.Samples {
@@ -123,8 +254,8 @@ func (d *DefaultMetricStorage) insertUpdatedDate(tsid int64, timeSeries TimeSeri
 	}
 	sb.WriteString(";")
 
-	args := argSliceP.Get()
-	defer argSliceP.Put(args)
+	args := interfaceSliceP.Get()
+	defer interfaceSliceP.Put(args)
 	for d := range dates {
 		*args = append(*args, tsid)
 		*args = append(*args, d)
@@ -133,6 +264,7 @@ func (d *DefaultMetricStorage) insertUpdatedDate(tsid int64, timeSeries TimeSeri
 	return err
 }
 
+// INSERT INTO flash_metrics_data (tsid, ts, v) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?);
 func (d *DefaultMetricStorage) insertData(tsid int64, timeSeries TimeSeries) error {
 	var sb strings.Builder
 	sb.WriteString("INSERT INTO flash_metrics_data (tsid, ts, v) VALUES (?, ?, ?)")
@@ -141,8 +273,8 @@ func (d *DefaultMetricStorage) insertData(tsid int64, timeSeries TimeSeries) err
 	}
 	sb.WriteString(";")
 
-	args := argSliceP.Get()
-	defer argSliceP.Put(args)
+	args := interfaceSliceP.Get()
+	defer interfaceSliceP.Put(args)
 	for _, sample := range timeSeries.Samples {
 		*args = append(*args, tsid)
 		*args = append(*args, time.Unix(sample.Timestamp, 0).UTC().Format(time.RFC3339))
