@@ -49,18 +49,11 @@ func init() {
 		}
 	}
 
-	for _, stmt := range setupTiflashReplica {
+	for _, stmt := range []string{table.AlterTiflashIndex, table.AlterTiflashUpdate, table.AlterTiflashData} {
 		if _, err = db.Exec(stmt); err != nil {
 			log.Fatal("failed to set replica", zap.String("statement", stmt), zap.Error(err))
 		}
 	}
-}
-
-// control
-var setupTiflashReplica = []string{
-	"ALTER TABLE flash_metrics_data SET TIFLASH REPLICA 1;",
-	"ALTER TABLE flash_metrics_index SET TIFLASH REPLICA 1;",
-	"ALTER TABLE flash_metrics_update SET TIFLASH REPLICA 1;",
 }
 
 func main() {
