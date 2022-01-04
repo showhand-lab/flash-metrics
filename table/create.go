@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS flash_metrics_update (
 `
 
 	CreateMeta = `
-CREATE TABLE flash_metrics_meta (
+CREATE TABLE IF NOT EXISTS flash_metrics_meta (
     metric_name CHAR(255) NOT NULL,
     label_name CHAR(255) NOT NULL,
     label_id TINYINT NOT NULL,
