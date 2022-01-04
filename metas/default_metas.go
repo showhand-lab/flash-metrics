@@ -2,10 +2,13 @@ package metas
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/hashicorp/golang-lru/simplelru"
+	"github.com/showhand-lab/flash-metrics-storage/table"
 )
 
 var (
@@ -83,6 +86,10 @@ func (d *DefaultMetaStorage) StoreMeta(metricName string, labelNames []string) (
 	}
 
 	newLabelLen := len(*labels)
+	if newLabelLen+len(r.Labels) > table.MaxLabelCount {
+		return nil, errors.New(fmt.Sprintf("failed to add new labels for %s due to exceed label limit: %d", metricName, table.MaxLabelCount))
+	}
+
 	if newLabelLen > 0 {
 		args := argSliceP.Get()
 		defer argSliceP.Put(args)

@@ -10,10 +10,11 @@ import (
 	"github.com/showhand-lab/flash-metrics-storage/store"
 	"github.com/showhand-lab/flash-metrics-storage/table"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
-func TestDefaultMetricsBasic(t *testing.T) {
-	db, err := sql.Open("mysql", "root@(127.0.0.1:4000)/test")
+func TestDefaultMetrics(t *testing.T) {
+	db, err := sql.Open("mysql", "root@(127.0.0.1:4000)/")
 	if err != nil {
 		t.Skip("failed to open database", err)
 	}
@@ -26,19 +27,42 @@ func TestDefaultMetricsBasic(t *testing.T) {
 		t.Skip("failed to ping database", err)
 	}
 
-	for _, stmt := range []string{table.DropMeta, table.DropIndex, table.DropUpdate, table.DropData} {
-		_, err = db.Exec(stmt)
-		require.NoError(t, err)
-	}
+	suite.Run(t, &testDefaultMetricsSuite{})
+}
+
+type testDefaultMetricsSuite struct {
+	suite.Suite
+
+	db *sql.DB
+}
+
+func (s *testDefaultMetricsSuite) SetupSuite() {
+	db, err := sql.Open("mysql", "root@(127.0.0.1:4000)/")
+	s.NoError(err)
+	s.db = db
+
+	_, err = db.Exec("CREATE DATABASE IF NOT EXISTS test_default_metrics")
+	s.NoError(err)
+	_, err = db.Exec("USE test_default_metrics")
+	s.NoError(err)
+
 	for _, stmt := range []string{table.CreateMeta, table.CreateIndex, table.CreateUpdate, table.CreateData} {
 		_, err = db.Exec(stmt)
-		require.NoError(t, err)
+		s.NoError(err)
 	}
+}
 
+func (s *testDefaultMetricsSuite) TearDownSuite() {
+	_, err := s.db.Exec("DROP DATABASE IF EXISTS test_default_metrics")
+	s.NoError(err)
+	s.NoError(s.db.Close())
+}
+
+func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	now := time.Now().Unix()
 
-	metricStorage := store.NewDefaultMetricStorage(db)
-	err = metricStorage.Store(store.TimeSeries{
+	metricStorage := store.NewDefaultMetricStorage(s.db)
+	err := metricStorage.Store(store.TimeSeries{
 		Name: "api_http_requests_total",
 		Labels: []store.Label{{
 			Name:  "method",
@@ -55,7 +79,7 @@ func TestDefaultMetricsBasic(t *testing.T) {
 			Value:     200.0,
 		}},
 	})
-	require.NoError(t, err)
+	s.NoError(err)
 
 	err = metricStorage.Store(store.TimeSeries{
 		Name: "api_http_requests_total",
@@ -71,13 +95,13 @@ func TestDefaultMetricsBasic(t *testing.T) {
 			Value:     77.0,
 		}},
 	})
-	require.NoError(t, err)
+	s.NoError(err)
 
 	ts, err := metricStorage.Query(now, now, "api_http_requests_total", nil)
-	require.NoError(t, err)
+	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })
-	require.Equal(t, ts, []store.TimeSeries{{
+	s.Equal(ts, []store.TimeSeries{{
 		Name: "api_http_requests_total",
 		Labels: []store.Label{{
 			Name:  "handler",
@@ -109,9 +133,9 @@ func TestDefaultMetricsBasic(t *testing.T) {
 		LabelName:  "method",
 		LabelValue: "GET",
 	}})
-	require.NoError(t, err)
+	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
-	require.Equal(t, ts, []store.TimeSeries{{
+	s.Equal(ts, []store.TimeSeries{{
 		Name: "api_http_requests_total",
 		Labels: []store.Label{{
 			Name:  "handler",
@@ -133,16 +157,16 @@ func TestDefaultMetricsBasic(t *testing.T) {
 		LabelName:  "job",
 		LabelValue: "tidb",
 	}})
-	require.NoError(t, err)
-	require.Equal(t, len(ts), 0)
+	s.NoError(err)
+	s.Equal(len(ts), 0)
 
 	ts, err = metricStorage.Query(now+15, now+15, "api_http_requests_total", []store.Matcher{{
 		LabelName:  "method",
 		LabelValue: "GET",
 		IsNegative: true,
 	}})
-	require.NoError(t, err)
-	require.Equal(t, len(ts), 0)
+	s.NoError(err)
+	s.Equal(len(ts), 0)
 
 	ts, err = metricStorage.Query(now, now, "api_http_requests_total", []store.Matcher{{
 		LabelName:  "method",
@@ -151,7 +175,7 @@ func TestDefaultMetricsBasic(t *testing.T) {
 	}})
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })
-	require.Equal(t, ts, []store.TimeSeries{{
+	s.Equal(ts, []store.TimeSeries{{
 		Name: "api_http_requests_total",
 		Labels: []store.Label{{
 			Name:  "handler",
@@ -186,7 +210,7 @@ func TestDefaultMetricsBasic(t *testing.T) {
 		IsNegative: true,
 	}})
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
-	require.Equal(t, ts, []store.TimeSeries{{
+	s.Equal(ts, []store.TimeSeries{{
 		Name: "api_http_requests_total",
 		Labels: []store.Label{{
 			Name:  "handler",
