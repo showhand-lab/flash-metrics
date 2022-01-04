@@ -4,10 +4,15 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/log"
+	"github.com/showhand-lab/flash-metrics-storage/service"
+	"github.com/showhand-lab/flash-metrics-storage/store"
 	"github.com/showhand-lab/flash-metrics-storage/table"
 	"github.com/showhand-lab/flash-metrics-storage/utils/printer"
 	"go.uber.org/zap"
@@ -15,16 +20,20 @@ import (
 
 const (
 	nmTiDBAddr = "tidb.address"
+	nmAddr     = "address"
 )
 
 // flags
 var (
-	tidbAddr = flag.String(nmTiDBAddr, "", "The address of TiDB")
+	tidbAddr   = flag.String(nmTiDBAddr, "", "The address of TiDB")
+	listenAddr = flag.String(nmAddr, "", "TCP address to listen for http connections")
 )
 
 // global variables
 var (
 	db *sql.DB
+
+	mstore store.MetricStorage
 )
 
 func initDatabase() {
@@ -55,10 +64,51 @@ func initDatabase() {
 	}
 }
 
+func closeDatabase() {
+	if db != nil {
+		if err := db.Close(); err != nil {
+			log.Warn("failed to close database", zap.Error(err))
+		}
+		db = nil
+	}
+}
+
+func initStore() {
+	mstore = store.NewDefaultMetricStorage(db)
+}
+
+func closeStore() {}
+
 func main() {
 	flag.Parse()
 
 	printer.PrintFlashMetricsStorageInfo()
 
 	initDatabase()
+	defer closeDatabase()
+
+	initStore()
+	defer closeStore()
+
+	if len(*listenAddr) == 0 {
+		log.Fatal("empty listen address", zap.String("listen-address", *listenAddr))
+	}
+	service.Init(*listenAddr)
+	defer service.Stop()
+
+	sig := WaitForSigterm()
+	log.Info("received signal", zap.String("sig", sig.String()))
+}
+
+func WaitForSigterm() os.Signal {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	for {
+		sig := <-ch
+		if sig == syscall.SIGHUP {
+			// Prevent from the program stop on SIGHUP
+			continue
+		}
+		return sig
+	}
 }
