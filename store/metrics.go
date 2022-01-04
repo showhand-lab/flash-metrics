@@ -19,7 +19,7 @@ type Sample struct {
 type Matcher struct {
 	LabelName  string
 	LabelValue string
-	IsLike     bool
+	IsRE       bool
 	IsNegative bool
 }
 

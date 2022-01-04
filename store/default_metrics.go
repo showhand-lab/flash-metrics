@@ -63,7 +63,7 @@ func (d *DefaultMetricStorage) Store(timeSeries TimeSeries) error {
 // Query implements interface MetricStorage
 //
 // SELECT
-//    tsid, label0, label1, ts, v
+//    tsid, label0, label1, UNIX_TIMESTAMP(ts), v
 //  FROM
 //    flash_metrics_index
 //    INNER JOIN flash_metrics_update ON (_tidb_rowid = tsid)
@@ -71,7 +71,7 @@ func (d *DefaultMetricStorage) Store(timeSeries TimeSeries) error {
 //  WHERE
 //    metric_name = "xxx"
 //    AND label0 != "yyy"
-//    AND label1 LIKE "zzz"
+//    AND label1 REGEXP "zzz"
 //    AND DATE(start_ts) <= updated_date AND updated_date <= DATE(end_ts)
 //    AND start_ts <= ts AND ts <= end_ts;
 func (d *DefaultMetricStorage) Query(start, end int64, metricsName string, matchers []Matcher) ([]TimeSeries, error) {
@@ -99,7 +99,7 @@ func (d *DefaultMetricStorage) Query(start, end int64, metricsName string, match
 		sb.WriteString(", ")
 		names = append(names, string(n))
 	}
-	sb.WriteString("ts, v\n")
+	sb.WriteString("UNIX_TIMESTAMP(ts), v\n")
 	sb.WriteString(`
 FROM
   flash_metrics_index
@@ -115,11 +115,11 @@ WHERE
 		sb.WriteString("AND label")
 		sb.WriteString(strconv.Itoa(int(labelID)))
 
-		if matcher.IsLike {
+		if matcher.IsRE {
 			if matcher.IsNegative {
-				sb.WriteString(" NOT LIKE ?\n")
+				sb.WriteString(" NOT REGEXP ?\n")
 			} else {
-				sb.WriteString(" LIKE ?\n")
+				sb.WriteString(" REGEXP ?\n")
 			}
 		} else {
 			if matcher.IsNegative {
@@ -181,7 +181,7 @@ WHERE
 			}
 		}
 
-		ts := (*dest)[len(*dest)-2].(time.Time).Unix()
+		ts := (*dest)[len(*dest)-2].(int64)
 		v := (*dest)[len(*dest)-1].(float64)
 		timeSeries.Samples = append(timeSeries.Samples, Sample{
 			Timestamp: ts,

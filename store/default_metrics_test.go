@@ -13,7 +13,7 @@ import (
 )
 
 func TestDefaultMetricsBasic(t *testing.T) {
-	db, err := sql.Open("mysql", "root@(127.0.0.1:4000)/test?parseTime=true")
+	db, err := sql.Open("mysql", "root@(127.0.0.1:4000)/test")
 	if err != nil {
 		t.Skip("failed to open database", err)
 	}
@@ -146,8 +146,8 @@ func TestDefaultMetricsBasic(t *testing.T) {
 
 	ts, err = metricStorage.Query(now, now, "api_http_requests_total", []store.Matcher{{
 		LabelName:  "method",
-		LabelValue: "%T",
-		IsLike:     true,
+		LabelValue: ".*T",
+		IsRE:       true,
 	}})
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })
@@ -181,8 +181,8 @@ func TestDefaultMetricsBasic(t *testing.T) {
 
 	ts, err = metricStorage.Query(now, now, "api_http_requests_total", []store.Matcher{{
 		LabelName:  "method",
-		LabelValue: "PO%",
-		IsLike:     true,
+		LabelValue: "PO.*",
+		IsRE:       true,
 		IsNegative: true,
 	}})
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
