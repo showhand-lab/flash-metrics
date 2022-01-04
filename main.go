@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
+	"github.com/showhand-lab/flash-metrics-storage/scrape"
 	"os"
 	"os/signal"
 	"syscall"
@@ -91,13 +93,19 @@ func main() {
 	if err != nil {
 		log.Fatal("fail to load config file ", zap.String("config.file", *cfgFilePath))
 	}
-	log.Info("targets ", zap.String("targets", cfg.ScrapeConfig[0].JobName))
+	log.Info("targets ", zap.String("targets", cfg.ScrapeConfigs[0].JobName))
+	tidbAddr = &cfg.TiDBConfig.Address
+	listenAddr = &cfg.WebConfig.Address
 
-	initDatabase()
-	defer closeDatabase()
+	//initDatabase()
+	//defer closeDatabase()
 
 	initStore()
 	defer closeStore()
+
+	ctx, cancelScrapeFunc := context.WithCancel(context.Background())
+	scrape.Init(ctx, mstore, cfg)
+	defer cancelScrapeFunc()
 
 	if len(*listenAddr) == 0 {
 		log.Fatal("empty listen address", zap.String("listen-address", *listenAddr))
