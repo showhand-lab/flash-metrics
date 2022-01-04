@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/log"
+	"github.com/showhand-lab/flash-metrics-storage/config"
 	"github.com/showhand-lab/flash-metrics-storage/service"
 	"github.com/showhand-lab/flash-metrics-storage/store"
 	"github.com/showhand-lab/flash-metrics-storage/table"
@@ -19,14 +20,16 @@ import (
 )
 
 const (
-	nmTiDBAddr = "tidb.address"
-	nmAddr     = "address"
+	nmTiDBAddr       = "tidb.address"
+	nmAddr           = "address"
+	nmConfigFilePath = "config.file"
 )
 
 // flags
 var (
-	tidbAddr   = flag.String(nmTiDBAddr, "", "The address of TiDB")
-	listenAddr = flag.String(nmAddr, "", "TCP address to listen for http connections")
+	cfgFilePath = flag.String(nmConfigFilePath, "./flashmetrics.yml", "YAML config file path for flashmetrics.")
+	tidbAddr    = flag.String(nmTiDBAddr, "", "The address of TiDB")
+	listenAddr  = flag.String(nmAddr, "", "TCP address to listen for http connections")
 )
 
 // global variables
@@ -83,6 +86,12 @@ func main() {
 	flag.Parse()
 
 	printer.PrintFlashMetricsStorageInfo()
+
+	cfg, err := config.LoadConfig(*cfgFilePath)
+	if err != nil {
+		log.Fatal("fail to load config file ", zap.String("config.file", *cfgFilePath))
+	}
+	log.Info("targets ", zap.String("targets", cfg.ScrapeConfig[0].JobName))
 
 	initDatabase()
 	defer closeDatabase()

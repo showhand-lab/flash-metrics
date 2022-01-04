@@ -3,6 +3,8 @@ module github.com/showhand-lab/flash-metrics-storage
 go 1.16
 
 require (
+	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
+	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2
@@ -14,4 +16,6 @@ require (
 	go.uber.org/zap v1.19.0
 	google.golang.org/genproto v0.0.0-20211223182754-3ac035c7e7cb // indirect
 	google.golang.org/grpc v1.43.0 // indirect
+	gopkg.in/alecthomas/kingpin.v2 v2.2.6
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
