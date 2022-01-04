@@ -11,7 +11,7 @@ import (
 )
 
 func TestDefaultMetasBasic(t *testing.T) {
-	db, err := sql.Open("mysql", "root@(127.0.0.1:4000)/test?parseTime=true")
+	db, err := sql.Open("mysql", "root@(127.0.0.1:4000)/test")
 	if err != nil {
 		t.Skip("failed to open database", err)
 	}

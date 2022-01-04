@@ -71,7 +71,7 @@ func (d *DefaultMetricStorage) Store(timeSeries TimeSeries) error {
 //  WHERE
 //    metric_name = "xxx"
 //    AND label0 != "yyy"
-//    AND label1 REGEXP "zzz"
+//    AND label1 REGEXP "zzz.*"
 //    AND DATE(start_ts) <= updated_date AND updated_date <= DATE(end_ts)
 //    AND start_ts <= ts AND ts <= end_ts;
 func (d *DefaultMetricStorage) Query(start, end int64, metricsName string, matchers []Matcher) ([]TimeSeries, error) {

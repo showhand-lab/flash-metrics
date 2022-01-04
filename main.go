@@ -33,7 +33,7 @@ func initDatabase() {
 	}
 
 	// Setup
-	d, err := sql.Open("mysql", fmt.Sprintf("root@(%s)/test?parseTime=true", *tidbAddr))
+	d, err := sql.Open("mysql", fmt.Sprintf("root@(%s)/test", *tidbAddr))
 	if err != nil {
 		log.Fatal("failed to open db", zap.Error(err))
 	}
