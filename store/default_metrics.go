@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zhongzc/flash-metrics-write/metas"
+	"github.com/showhand-lab/flash-metrics-storage/metas"
 )
 
 var (

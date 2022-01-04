@@ -8,7 +8,8 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/log"
-	"github.com/zhongzc/flash-metrics-write/table"
+	"github.com/showhand-lab/flash-metrics-storage/table"
+	"github.com/showhand-lab/flash-metrics-storage/utils/printer"
 	"go.uber.org/zap"
 )
 
@@ -26,9 +27,7 @@ var (
 	db *sql.DB
 )
 
-func init() {
-	flag.Parse()
-
+func initDatabase() {
 	if len(*tidbAddr) == 0 {
 		log.Fatal("empty tidb address", zap.String("address", *tidbAddr))
 	}
@@ -57,5 +56,9 @@ func init() {
 }
 
 func main() {
+	flag.Parse()
 
+	printer.PrintFlashMetricsStorageInfo()
+
+	initDatabase()
 }

@@ -7,9 +7,9 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics-storage/table"
 	"github.com/stretchr/testify/require"
-	"github.com/zhongzc/flash-metrics-write/store"
-	"github.com/zhongzc/flash-metrics-write/table"
 )
 
 func TestDefaultMetricsBasic(t *testing.T) {

@@ -1,4 +1,4 @@
-module github.com/zhongzc/flash-metrics-write
+module github.com/showhand-lab/flash-metrics-storage
 
 go 1.16
 
