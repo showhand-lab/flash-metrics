@@ -50,10 +50,10 @@ revive: tools/bin/revive
 	@tools/bin/revive -formatter friendly -config tools/check/revive.toml
 
 tools/bin/revive: tools/check/go.mod
-	(cd tools/check && $(GO) build -o ../bin/revive github.com/mgechev/revive)
+	@(cd tools/check && $(GO) build -o ../bin/revive github.com/mgechev/revive)
 
 import-lint: tools/bin/go-import-lint
 	@tools/bin/go-import-lint
 
 tools/bin/go-import-lint: tools/check/go.mod
-	(cd tools/check && $(GO) build -o ../bin/go-import-lint github.com/hedhyw/go-import-lint/cmd/go-import-lint)
+	@(cd tools/check && $(GO) build -o ../bin/go-import-lint github.com/hedhyw/go-import-lint/cmd/go-import-lint)
