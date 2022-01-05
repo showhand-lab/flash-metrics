@@ -80,7 +80,7 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 	}
 
 	timeSeries := make([]store.TimeSeries, 0)
-	nowMs := time.Now().UnixMilli()
+	nowMs := time.Now().UnixNano() / int64(time.Millisecond)
 	for name, metricFamily := range metricFamilyMap {
 
 		// TODO: support extra labels from scrape configs
