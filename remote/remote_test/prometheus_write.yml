@@ -1,0 +1,8 @@
+remote_write:
+  - url: "http://127.0.0.1:9977/write"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['127.0.0.1:9097']
