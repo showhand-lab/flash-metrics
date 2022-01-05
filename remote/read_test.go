@@ -3,12 +3,12 @@ package remote_test
 import (
 	"bytes"
 	"database/sql"
-	"github.com/golang/protobuf/proto"
 	"net/http"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/showhand-lab/flash-metrics-storage/remote"
