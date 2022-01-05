@@ -137,8 +137,8 @@ WHERE
 	*args = append(*args, time.Unix(end/1000, (end%1000)*1_000_000).UTC().Format("2006-01-02"))
 	sb.WriteString("AND ? <= ts AND ts <= ?\n")
 	sb.WriteString("ORDER BY tsid, t;")
-	*args = append(*args, time.Unix(start/1000, (start%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999"))
-	*args = append(*args, time.Unix(end/1000, (end%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999"))
+	*args = append(*args, time.Unix(start/1000, (start%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
+	*args = append(*args, time.Unix(end/1000, (end%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
 
 	rows, err := d.db.Query(sb.String(), *args...)
 	if err != nil {
@@ -279,7 +279,7 @@ func (d *DefaultMetricStorage) insertData(tsid int64, timeSeries TimeSeries) err
 	defer interfaceSliceP.Put(args)
 	for _, sample := range timeSeries.Samples {
 		*args = append(*args, tsid)
-		*args = append(*args, time.Unix(sample.TimestampMs/1000, (sample.TimestampMs%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999"))
+		*args = append(*args, time.Unix(sample.TimestampMs/1000, (sample.TimestampMs%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
 		*args = append(*args, sample.Value)
 	}
 

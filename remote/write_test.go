@@ -25,15 +25,15 @@ func TestRemoteWrite(t *testing.T) {
 
 type testRemoteWriteSuite struct {
 	suite.Suite
-	db     *sql.DB
-	mstore store.MetricStorage
+	db      *sql.DB
+	storage store.MetricStorage
 }
 
 func (s *testRemoteWriteSuite) SetupSuite() {
 	db, err := utils.SetupDB("test_remote_write")
 	s.NoError(err)
 	s.db = db
-	s.mstore = store.NewDefaultMetricStorage(db)
+	s.storage = store.NewDefaultMetricStorage(db)
 }
 
 func (s *testRemoteWriteSuite) TearDownSuite() {
@@ -88,12 +88,12 @@ func (s *testRemoteWriteSuite) TestBasic() {
 
 	respBuf := bytes.NewBuffer(nil)
 	httpResp := utils.NewRespWriter(respBuf)
-	remote.WriteHandler(s.mstore)(httpResp, httpReq)
+	remote.WriteHandler(s.storage)(httpResp, httpReq)
 
 	s.True(httpResp.Code >= 200 && httpResp.Code < 300)
 	s.Equal(respBuf.String(), "ok")
 
-	ts, err := s.mstore.Query(now, now+15, "api_http_requests_total", nil)
+	ts, err := s.storage.Query(now, now+15, "api_http_requests_total", nil)
 	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })

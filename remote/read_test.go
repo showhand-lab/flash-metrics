@@ -26,15 +26,15 @@ func TestRemoteRead(t *testing.T) {
 
 type testRemoteReadSuite struct {
 	suite.Suite
-	db     *sql.DB
-	mstore store.MetricStorage
+	db      *sql.DB
+	storage store.MetricStorage
 }
 
 func (s *testRemoteReadSuite) SetupSuite() {
 	db, err := utils.SetupDB("test_remote_read")
 	s.NoError(err)
 	s.db = db
-	s.mstore = store.NewDefaultMetricStorage(db)
+	s.storage = store.NewDefaultMetricStorage(db)
 }
 
 func (s *testRemoteReadSuite) TearDownSuite() {
@@ -159,7 +159,7 @@ func (s *testRemoteReadSuite) TestBasic() {
 
 	respBuf := bytes.NewBuffer(nil)
 	httpResp := utils.NewRespWriter(respBuf)
-	remote.ReadHandler(s.mstore)(httpResp, httpReq)
+	remote.ReadHandler(s.storage)(httpResp, httpReq)
 
 	s.True(httpResp.Code >= 200 && httpResp.Code < 300)
 	respBytes, err := snappy.Decode(nil, respBuf.Bytes())

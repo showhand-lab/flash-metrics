@@ -17,7 +17,7 @@ var (
 	queryResultP = QueryResultSlicePool{}
 )
 
-func ReadHandler(mstore store.MetricStorage) http.HandlerFunc {
+func ReadHandler(storage store.MetricStorage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req, err := decodeReadRequest(r.Body)
 		if err != nil {
@@ -57,7 +57,7 @@ func ReadHandler(mstore store.MetricStorage) http.HandlerFunc {
 				continue
 			}
 
-			ts, err := mstore.Query(query.StartTimestampMs, query.EndTimestampMs, metricName, matcher)
+			ts, err := storage.Query(query.StartTimestampMs, query.EndTimestampMs, metricName, matcher)
 			if err != nil {
 				log.Warn("failed to query", zap.Any("query", query), zap.Error(err))
 				*queryResults = append(*queryResults, nil)

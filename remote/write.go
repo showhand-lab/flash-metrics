@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func WriteHandler(mstore store.MetricStorage) http.HandlerFunc {
+func WriteHandler(storage store.MetricStorage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req, err := decodeWriteRequest(r.Body)
 		if err != nil {
@@ -53,7 +53,7 @@ func WriteHandler(mstore store.MetricStorage) http.HandlerFunc {
 			}
 
 			n := time.Now()
-			if err = mstore.Store(storeTS); err != nil {
+			if err = storage.Store(storeTS); err != nil {
 				log.Warn("failed to store timeseries", zap.Error(err), zap.Any("timeseries", series))
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return

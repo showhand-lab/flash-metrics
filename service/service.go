@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func Init(addr string, mstore store.MetricStorage) {
+func Init(addr string, storage store.MetricStorage) {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal("failed to listen",
@@ -18,7 +18,7 @@ func Init(addr string, mstore store.MetricStorage) {
 		)
 	}
 
-	go http.ServeHTTP(listener, mstore)
+	go http.ServeHTTP(listener, storage)
 
 	log.Info(
 		"starting http service",
