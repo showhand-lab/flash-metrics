@@ -58,8 +58,9 @@ func Init(flashMetricsConfig *config.FlashMetricsConfig, ctx context.Context, me
 	}
 }
 
-// TODO: test cases
+// TODO: add test cases
 // TODO: refactor duplicated snippets
+// TODO: store metric type, not just time series
 func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string, metricStore store.MetricStorage) {
 	defer wg.Done()
 	resp, err := httpClient.Get(targetUrl)
@@ -75,6 +76,8 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 	timeSeries := make([]store.TimeSeries, 0)
 	nowMs := time.Now().UnixMilli()
 	for name, metricFamily := range metricFamilyMap {
+
+		// TODO: support extra labels from scrape configs
 		for _, metric := range metricFamily.GetMetric() {
 			labels := make([]store.Label, 0)
 			for _, l := range metric.GetLabel() {
