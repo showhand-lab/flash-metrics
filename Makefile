@@ -27,3 +27,8 @@ test:
 	@echo "Running test"
 	@export log_level=info; export TZ='Asia/Shanghai'; \
 	$(GOTEST) -cover $(PACKAGES_TESTS) -coverprofile=coverage.txt
+
+up-remote-write:
+	@echo "Running prometheus"
+	@rm -rf remote/remote_test/data
+	@prometheus --config.file=remote/remote_test/prometheus.yml --storage.tsdb.path=remote/remote_test/data

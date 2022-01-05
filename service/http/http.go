@@ -1,6 +1,7 @@
 package http
 
 import (
+	"github.com/showhand-lab/flash-metrics-storage/store"
 	"net"
 	"net/http"
 
@@ -13,10 +14,10 @@ var (
 	httpServer *http.Server = nil
 )
 
-func ServeHTTP(listener net.Listener) {
+func ServeHTTP(listener net.Listener, mstore store.MetricStorage) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/write", remote.WriteHandler)
-	mux.HandleFunc("/read", remote.ReadHandler)
+	mux.HandleFunc("/write", remote.WriteHandler(mstore))
+	mux.HandleFunc("/read", remote.ReadHandler(mstore))
 
 	httpServer = &http.Server{Handler: mux}
 	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {

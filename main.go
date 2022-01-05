@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	stdlog "log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -20,21 +21,32 @@ import (
 
 const (
 	nmTiDBAddr = "tidb.address"
+	nmLogLevel = "log.level"
 	nmAddr     = "address"
+	nmCleanup  = "cleanup"
 )
 
 // flags
 var (
-	tidbAddr   = flag.String(nmTiDBAddr, "", "The address of TiDB")
-	listenAddr = flag.String(nmAddr, "", "TCP address to listen for http connections")
+	tidbAddr   = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
+	listenAddr = flag.String(nmAddr, "127.0.0.1:9977", "TCP address to listen for http connections")
+	logLevel   = flag.String(nmLogLevel, "info", "Log level")
+	cleanup    = flag.Bool(nmCleanup, false, "Whether to cleanup data during shutting down, set for debug")
 )
 
 // global variables
 var (
 	db *sql.DB
-
-	mstore store.MetricStorage
 )
+
+func initLog() {
+	cfg := &log.Config{Level: *logLevel}
+	logger, p, err := log.InitLogger(cfg)
+	if err != nil {
+		stdlog.Fatalf("failed to init logger, err: %s", err)
+	}
+	log.ReplaceGlobals(logger, p)
+}
 
 func initDatabase() {
 	if len(*tidbAddr) == 0 {
@@ -66,6 +78,14 @@ func initDatabase() {
 
 func closeDatabase() {
 	if db != nil {
+		if *cleanup {
+			for _, stmt := range []string{table.DropData, table.DropUpdate, table.DropIndex, table.DropMeta} {
+				if _, err := db.Exec(stmt); err != nil {
+					log.Fatal("failed to set replica", zap.String("statement", stmt), zap.Error(err))
+				}
+			}
+		}
+
 		if err := db.Close(); err != nil {
 			log.Warn("failed to close database", zap.Error(err))
 		}
@@ -73,27 +93,22 @@ func closeDatabase() {
 	}
 }
 
-func initStore() {
-	mstore = store.NewDefaultMetricStorage(db)
-}
-
-func closeStore() {}
-
 func main() {
 	flag.Parse()
 
 	printer.PrintFlashMetricsStorageInfo()
 
+	initLog()
+
 	initDatabase()
 	defer closeDatabase()
 
-	initStore()
-	defer closeStore()
+	mstore := store.NewDefaultMetricStorage(db)
 
 	if len(*listenAddr) == 0 {
 		log.Fatal("empty listen address", zap.String("listen-address", *listenAddr))
 	}
-	service.Init(*listenAddr)
+	service.Init(*listenAddr, mstore)
 	defer service.Stop()
 
 	sig := WaitForSigterm()

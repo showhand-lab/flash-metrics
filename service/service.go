@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/showhand-lab/flash-metrics-storage/store"
 	"net"
 
 	"github.com/pingcap/log"
@@ -8,7 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func Init(addr string) {
+func Init(addr string, mstore store.MetricStorage) {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal("failed to listen",
@@ -17,7 +18,7 @@ func Init(addr string) {
 		)
 	}
 
-	go http.ServeHTTP(listener)
+	go http.ServeHTTP(listener, mstore)
 
 	log.Info(
 		"starting http service",

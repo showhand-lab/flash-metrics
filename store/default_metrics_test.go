@@ -32,7 +32,6 @@ func TestDefaultMetrics(t *testing.T) {
 
 type testDefaultMetricsSuite struct {
 	suite.Suite
-
 	db *sql.DB
 }
 
@@ -59,7 +58,7 @@ func (s *testDefaultMetricsSuite) TearDownSuite() {
 }
 
 func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
-	now := time.Now().Unix()
+	now := time.Now().UnixNano() / int64(time.Millisecond)
 
 	metricStorage := store.NewDefaultMetricStorage(s.db)
 	err := metricStorage.Store(store.TimeSeries{
@@ -72,11 +71,11 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "/messages",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     100.0,
+			TimestampMs: now,
+			Value:       100.0,
 		}, {
-			Timestamp: now + 15,
-			Value:     200.0,
+			TimestampMs: now + 15,
+			Value:       200.0,
 		}},
 	})
 	s.NoError(err)
@@ -91,8 +90,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "/messages",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     77.0,
+			TimestampMs: now,
+			Value:       77.0,
 		}},
 	})
 	s.NoError(err)
@@ -111,8 +110,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "GET",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     100.0,
+			TimestampMs: now,
+			Value:       100.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
@@ -124,8 +123,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "POST",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     77.0,
+			TimestampMs: now,
+			Value:       77.0,
 		}},
 	}})
 
@@ -145,11 +144,11 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "GET",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     100.0,
+			TimestampMs: now,
+			Value:       100.0,
 		}, {
-			Timestamp: now + 15,
-			Value:     200.0,
+			TimestampMs: now + 15,
+			Value:       200.0,
 		}},
 	}})
 
@@ -185,8 +184,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "GET",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     100.0,
+			TimestampMs: now,
+			Value:       100.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
@@ -198,8 +197,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "POST",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     77.0,
+			TimestampMs: now,
+			Value:       77.0,
 		}},
 	}})
 
@@ -220,8 +219,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "GET",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     100.0,
+			TimestampMs: now,
+			Value:       100.0,
 		}},
 	}})
 }
