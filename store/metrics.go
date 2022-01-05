@@ -12,8 +12,8 @@ type Label struct {
 }
 
 type Sample struct {
-	Timestamp int64
-	Value     float64
+	TimestampMs int64
+	Value       float64
 }
 
 type Matcher struct {
@@ -25,5 +25,5 @@ type Matcher struct {
 
 type MetricStorage interface {
 	Store(timeSeries TimeSeries) error
-	Query(start, end int64, metricsName string, matchers []Matcher) ([]TimeSeries, error)
+	Query(startMs, endMs int64, metricsName string, matchers []Matcher) ([]TimeSeries, error)
 }

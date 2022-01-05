@@ -6,60 +6,38 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/showhand-lab/flash-metrics-storage/store"
-	"github.com/showhand-lab/flash-metrics-storage/table"
-	"github.com/stretchr/testify/require"
+	"github.com/showhand-lab/flash-metrics-storage/utils"
+
 	"github.com/stretchr/testify/suite"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func TestDefaultMetrics(t *testing.T) {
-	db, err := sql.Open("mysql", "root@(127.0.0.1:4000)/")
-	if err != nil {
-		t.Skip("failed to open database", err)
-	}
-	defer func() {
-		require.NoError(t, db.Close())
-	}()
-
-	err = db.Ping()
-	if err != nil {
+	if err := utils.PingTiDB(); err != nil {
 		t.Skip("failed to ping database", err)
 	}
-
 	suite.Run(t, &testDefaultMetricsSuite{})
 }
 
 type testDefaultMetricsSuite struct {
 	suite.Suite
-
 	db *sql.DB
 }
 
 func (s *testDefaultMetricsSuite) SetupSuite() {
-	db, err := sql.Open("mysql", "root@(127.0.0.1:4000)/")
+	db, err := utils.SetupDB("test_default_metrics")
 	s.NoError(err)
 	s.db = db
-
-	_, err = db.Exec("CREATE DATABASE IF NOT EXISTS test_default_metrics")
-	s.NoError(err)
-	_, err = db.Exec("USE test_default_metrics")
-	s.NoError(err)
-
-	for _, stmt := range []string{table.CreateMeta, table.CreateIndex, table.CreateUpdate, table.CreateData} {
-		_, err = db.Exec(stmt)
-		s.NoError(err)
-	}
 }
 
 func (s *testDefaultMetricsSuite) TearDownSuite() {
-	_, err := s.db.Exec("DROP DATABASE IF EXISTS test_default_metrics")
-	s.NoError(err)
-	s.NoError(s.db.Close())
+	s.NoError(utils.TearDownDB("test_default_metrics", s.db))
 }
 
 func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
-	now := time.Now().Unix()
+	now := time.Now().UnixNano() / int64(time.Millisecond)
 
 	metricStorage := store.NewDefaultMetricStorage(s.db)
 	err := metricStorage.Store(store.TimeSeries{
@@ -72,11 +50,11 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "/messages",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     100.0,
+			TimestampMs: now,
+			Value:       100.0,
 		}, {
-			Timestamp: now + 15,
-			Value:     200.0,
+			TimestampMs: now + 15,
+			Value:       200.0,
 		}},
 	})
 	s.NoError(err)
@@ -91,8 +69,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "/messages",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     77.0,
+			TimestampMs: now,
+			Value:       77.0,
 		}},
 	})
 	s.NoError(err)
@@ -111,8 +89,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "GET",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     100.0,
+			TimestampMs: now,
+			Value:       100.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
@@ -124,8 +102,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "POST",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     77.0,
+			TimestampMs: now,
+			Value:       77.0,
 		}},
 	}})
 
@@ -145,11 +123,11 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "GET",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     100.0,
+			TimestampMs: now,
+			Value:       100.0,
 		}, {
-			Timestamp: now + 15,
-			Value:     200.0,
+			TimestampMs: now + 15,
+			Value:       200.0,
 		}},
 	}})
 
@@ -173,6 +151,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 		LabelValue: ".*T",
 		IsRE:       true,
 	}})
+	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })
 	s.Equal(ts, []store.TimeSeries{{
@@ -185,8 +164,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "GET",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     100.0,
+			TimestampMs: now,
+			Value:       100.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
@@ -198,8 +177,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "POST",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     77.0,
+			TimestampMs: now,
+			Value:       77.0,
 		}},
 	}})
 
@@ -209,6 +188,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 		IsRE:       true,
 		IsNegative: true,
 	}})
+	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	s.Equal(ts, []store.TimeSeries{{
 		Name: "api_http_requests_total",
@@ -220,8 +200,8 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 			Value: "GET",
 		}},
 		Samples: []store.Sample{{
-			Timestamp: now,
-			Value:     100.0,
+			TimestampMs: now,
+			Value:       100.0,
 		}},
 	}})
 }

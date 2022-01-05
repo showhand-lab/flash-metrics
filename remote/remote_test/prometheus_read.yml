@@ -1,0 +1,2 @@
+remote_read:
+  - url: "http://127.0.0.1:9977/read"

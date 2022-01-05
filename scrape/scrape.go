@@ -73,7 +73,7 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 	metricFamilyMap, err := textMetricParser.TextToMetricFamilies(resp.Body)
 
 	timeSeries := make([]store.TimeSeries, 0)
-	now := time.Now().Unix()
+	nowMs := time.Now().UnixMilli()
 	for name, metricFamily := range metricFamilyMap {
 		for _, metric := range metricFamily.GetMetric() {
 			labels := make([]store.Label, 0)
@@ -91,8 +91,8 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 					Name:   name,
 					Labels: labels,
 					Samples: []store.Sample{{
-						Timestamp: now,
-						Value:     value,
+						TimestampMs: nowMs,
+						Value:       value,
 					}},
 				})
 			case io_prometheus_client.MetricType_GAUGE:
@@ -101,8 +101,8 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 					Name:   name,
 					Labels: labels,
 					Samples: []store.Sample{{
-						Timestamp: now,
-						Value:     value,
+						TimestampMs: nowMs,
+						Value:       value,
 					}},
 				})
 			case io_prometheus_client.MetricType_UNTYPED:
@@ -111,8 +111,8 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 					Name:   name,
 					Labels: labels,
 					Samples: []store.Sample{{
-						Timestamp: now,
-						Value:     value,
+						TimestampMs: nowMs,
+						Value:       value,
 					}},
 				})
 			case io_prometheus_client.MetricType_SUMMARY:
@@ -126,8 +126,8 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 						Name:   name,
 						Labels: quantileLabels,
 						Samples: []store.Sample{{
-							Timestamp: now,
-							Value:     quantile.GetValue(),
+							TimestampMs: nowMs,
+							Value:       quantile.GetValue(),
 						}},
 					})
 				}
@@ -135,16 +135,16 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 					Name:   name + "_sum",
 					Labels: labels,
 					Samples: []store.Sample{{
-						Timestamp: now,
-						Value:     *summary.SampleSum,
+						TimestampMs: nowMs,
+						Value:       *summary.SampleSum,
 					}},
 				})
 				timeSeries = append(timeSeries, store.TimeSeries{
 					Name:   name + "_count",
 					Labels: labels,
 					Samples: []store.Sample{{
-						Timestamp: now,
-						Value:     float64(*summary.SampleCount),
+						TimestampMs: nowMs,
+						Value:       float64(*summary.SampleCount),
 					}},
 				})
 			case io_prometheus_client.MetricType_HISTOGRAM:
@@ -158,8 +158,8 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 						Name:   name,
 						Labels: histogramLabels,
 						Samples: []store.Sample{{
-							Timestamp: now,
-							Value:     float64(*bucket.CumulativeCount),
+							TimestampMs: nowMs,
+							Value:       float64(*bucket.CumulativeCount),
 						}},
 					})
 				}
@@ -168,16 +168,16 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 					Name:   name + "_sum",
 					Labels: labels,
 					Samples: []store.Sample{{
-						Timestamp: now,
-						Value:     *histogram.SampleSum,
+						TimestampMs: nowMs,
+						Value:       *histogram.SampleSum,
 					}},
 				})
 				timeSeries = append(timeSeries, store.TimeSeries{
 					Name:   name + "_count",
 					Labels: labels,
 					Samples: []store.Sample{{
-						Timestamp: now,
-						Value:     float64(*histogram.SampleCount),
+						TimestampMs: nowMs,
+						Value:       float64(*histogram.SampleCount),
 					}},
 				})
 			default:
@@ -190,7 +190,7 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 		// TODO: 使用 batch store
 		log.Info("time series",
 			zap.String("name", tseries.Name),
-			zap.Int64("sample timestamp", tseries.Samples[0].Timestamp),
+			zap.Int64("sample timestamp", tseries.Samples[0].TimestampMs),
 			zap.Float64("sample value", tseries.Samples[0].Value))
 		err := metricStore.Store(tseries)
 		if err != nil {

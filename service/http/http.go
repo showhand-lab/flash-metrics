@@ -3,9 +3,12 @@ package http
 import (
 	"net"
 	"net/http"
+	"time"
+
+	"github.com/showhand-lab/flash-metrics-storage/remote"
+	"github.com/showhand-lab/flash-metrics-storage/store"
 
 	"github.com/pingcap/log"
-	"github.com/showhand-lab/flash-metrics-storage/remote"
 	"go.uber.org/zap"
 )
 
@@ -13,10 +16,10 @@ var (
 	httpServer *http.Server = nil
 )
 
-func ServeHTTP(listener net.Listener) {
+func ServeHTTP(listener net.Listener, storage store.MetricStorage) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/write", remote.WriteHandler)
-	mux.HandleFunc("/read", remote.ReadHandler)
+	mux.HandleFunc("/write", remote.WriteHandler(storage))
+	mux.HandleFunc("/read", remote.ReadHandler(storage))
 
 	httpServer = &http.Server{Handler: mux}
 	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
@@ -29,7 +32,14 @@ func StopHTTP() {
 		return
 	}
 
+	now := time.Now()
 	log.Info("shutting down http server")
-	_ = httpServer.Close()
-	log.Info("http server is down")
+	defer func() {
+		log.Info("http server is down", zap.Duration("in", time.Since(now)))
+	}()
+
+	if err := httpServer.Close(); err != nil {
+		log.Warn("failed to close http server", zap.Error(err))
+	}
+	httpServer = nil
 }

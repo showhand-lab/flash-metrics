@@ -63,7 +63,7 @@ func (d *DefaultMetricStorage) Store(timeSeries TimeSeries) error {
 // Query implements interface MetricStorage
 //
 // SELECT
-//    tsid, label0, label1, UNIX_TIMESTAMP(ts), v
+//    tsid, label0, label1, CAST(UNIX_TIMESTAMP(ts)*1000 AS UNSIGNED) AS t, v
 //  FROM
 //    flash_metrics_index
 //    INNER JOIN flash_metrics_update ON (_tidb_rowid = tsid)
@@ -73,7 +73,8 @@ func (d *DefaultMetricStorage) Store(timeSeries TimeSeries) error {
 //    AND label0 != "yyy"
 //    AND label1 REGEXP "zzz.*"
 //    AND DATE(start_ts) <= updated_date AND updated_date <= DATE(end_ts)
-//    AND start_ts <= ts AND ts <= end_ts;
+//    AND start_ts <= ts AND ts <= end_ts
+//  ORDER BY tsid, t;
 func (d *DefaultMetricStorage) Query(start, end int64, metricsName string, matchers []Matcher) ([]TimeSeries, error) {
 	m, err := d.QueryMeta(metricsName)
 	if err != nil {
@@ -99,7 +100,7 @@ func (d *DefaultMetricStorage) Query(start, end int64, metricsName string, match
 		sb.WriteString(", ")
 		names = append(names, string(n))
 	}
-	sb.WriteString("UNIX_TIMESTAMP(ts), v\n")
+	sb.WriteString("CAST(UNIX_TIMESTAMP(ts)*1000 AS UNSIGNED) AS t, v\n")
 	sb.WriteString(`
 FROM
   flash_metrics_index
@@ -132,11 +133,12 @@ WHERE
 	}
 
 	sb.WriteString("AND ? <= updated_date AND updated_date <= ?\n")
-	*args = append(*args, time.Unix(start, 0).UTC().Format("2006-01-02"))
-	*args = append(*args, time.Unix(end, 0).UTC().Format("2006-01-02"))
-	sb.WriteString("AND ? <= ts AND ts <= ?;")
-	*args = append(*args, time.Unix(start, 0).UTC().Format(time.RFC3339))
-	*args = append(*args, time.Unix(end, 0).UTC().Format(time.RFC3339))
+	*args = append(*args, time.Unix(start/1000, (start%1000)*1_000_000).UTC().Format("2006-01-02"))
+	*args = append(*args, time.Unix(end/1000, (end%1000)*1_000_000).UTC().Format("2006-01-02"))
+	sb.WriteString("AND ? <= ts AND ts <= ?\n")
+	sb.WriteString("ORDER BY tsid, t;")
+	*args = append(*args, time.Unix(start/1000, (start%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
+	*args = append(*args, time.Unix(end/1000, (end%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
 
 	rows, err := d.db.Query(sb.String(), *args...)
 	if err != nil {
@@ -184,8 +186,8 @@ WHERE
 		ts := (*dest)[len(*dest)-2].(int64)
 		v := (*dest)[len(*dest)-1].(float64)
 		timeSeries.Samples = append(timeSeries.Samples, Sample{
-			Timestamp: ts,
-			Value:     v,
+			TimestampMs: ts,
+			Value:       v,
 		})
 	}
 
@@ -243,7 +245,7 @@ func (d *DefaultMetricStorage) getTSID(timeSeries TimeSeries, m *metas.Meta) (in
 func (d *DefaultMetricStorage) insertUpdatedDate(tsid int64, timeSeries TimeSeries) error {
 	dates := map[string]struct{}{}
 	for _, s := range timeSeries.Samples {
-		date := time.Unix(s.Timestamp, 0).UTC().Format("2006-01-02")
+		date := time.Unix(s.TimestampMs/1000, (s.TimestampMs%1000)*1_000_000).UTC().Format("2006-01-02")
 		dates[date] = struct{}{}
 	}
 
@@ -277,7 +279,7 @@ func (d *DefaultMetricStorage) insertData(tsid int64, timeSeries TimeSeries) err
 	defer interfaceSliceP.Put(args)
 	for _, sample := range timeSeries.Samples {
 		*args = append(*args, tsid)
-		*args = append(*args, time.Unix(sample.Timestamp, 0).UTC().Format(time.RFC3339))
+		*args = append(*args, time.Unix(sample.TimestampMs/1000, (sample.TimestampMs%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
 		*args = append(*args, sample.Value)
 	}
 

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.16'
+      - name: Format
+        run: make fmt
+      - name: Lint
+        run: make lint
+      - name: Run TiUP Playground
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://tiup-mirrors.pingcap.com/install.sh | sh
+          echo -e "max-index-length = 12288" > tidb.config
+          $HOME/.tiup/bin/tiup playground nightly --db.config tidb.config &
+      - name: Wait TiDB Server for Ready
+        run: while true; do curl -s http://127.0.0.1:10080/status && break || sleep 5; done
+        timeout-minutes: 2
+      - name: Test
+        run: make test
+      - name: Shutdown TiUP Playground
+        if: always()
+        run: pkill -SIGINT tiup || true
