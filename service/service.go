@@ -1,11 +1,11 @@
 package service
 
 import (
-	"github.com/showhand-lab/flash-metrics-storage/store"
 	"net"
 
 	"github.com/pingcap/log"
 	"github.com/showhand-lab/flash-metrics-storage/service/http"
+	"github.com/showhand-lab/flash-metrics-storage/store"
 	"go.uber.org/zap"
 )
 

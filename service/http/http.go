@@ -1,12 +1,12 @@
 package http
 
 import (
-	"github.com/showhand-lab/flash-metrics-storage/store"
 	"net"
 	"net/http"
 
 	"github.com/pingcap/log"
 	"github.com/showhand-lab/flash-metrics-storage/remote"
+	"github.com/showhand-lab/flash-metrics-storage/store"
 	"go.uber.org/zap"
 )
 
