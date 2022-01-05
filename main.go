@@ -97,8 +97,8 @@ func main() {
 	tidbAddr = &cfg.TiDBConfig.Address
 	listenAddr = &cfg.WebConfig.Address
 
-	//initDatabase()
-	//defer closeDatabase()
+	initDatabase()
+	defer closeDatabase()
 
 	initStore()
 	defer closeStore()
