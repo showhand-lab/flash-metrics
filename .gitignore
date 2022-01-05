@@ -2,4 +2,5 @@
 bin
 coverage.txt
 tidb.config
-data/
+remote-write-data/
+remote-read-data/

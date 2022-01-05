@@ -22,18 +22,16 @@ import (
 const (
 	nmAddr     = "address"
 	nmTiDBAddr = "tidb.address"
-
 	nmLogLevel = "log.level"
-	nmLogPath  = "log.path"
-
-	nmCleanup = "cleanup"
+	nmLogFile  = "log.file"
+	nmCleanup  = "cleanup"
 )
 
 var (
 	tidbAddr   = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
 	listenAddr = flag.String(nmAddr, "127.0.0.1:9977", "TCP address to listen for http connections")
 	logLevel   = flag.String(nmLogLevel, "info", "Log level")
-	logPath    = flag.String(nmLogPath, "", "Log path")
+	logPath    = flag.String(nmLogFile, "", "Log file")
 	cleanup    = flag.Bool(nmCleanup, false, "Whether to cleanup data during shutting down, set for debug")
 )
 
@@ -54,7 +52,9 @@ func initLogger() {
 func initDatabase() *sql.DB {
 	now := time.Now()
 	log.Info("setting up database")
-	defer log.Info("init database done", zap.Duration("in", time.Since(now)))
+	defer func() {
+		log.Info("init database done", zap.Duration("in", time.Since(now)))
+	}()
 
 	db, err := sql.Open("mysql", fmt.Sprintf("root@(%s)/test", *tidbAddr))
 	if err != nil {
@@ -83,7 +83,9 @@ func initDatabase() *sql.DB {
 func closeDatabase(db *sql.DB) {
 	now := time.Now()
 	log.Info("closing database")
-	defer log.Info("close database done", zap.Duration("in", time.Since(now)))
+	defer func() {
+		log.Info("close database done", zap.Duration("in", time.Since(now)))
+	}()
 
 	if *cleanup {
 		for _, stmt := range []string{table.DropData, table.DropUpdate, table.DropIndex, table.DropMeta} {

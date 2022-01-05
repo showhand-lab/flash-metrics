@@ -29,6 +29,11 @@ test:
 	$(GOTEST) -cover $(PACKAGES_TESTS) -coverprofile=coverage.txt
 
 up-remote-write:
-	@echo "Running prometheus"
-	@rm -rf remote/remote_test/data
-	@prometheus --config.file=remote/remote_test/prometheus.yml --storage.tsdb.path=remote/remote_test/data
+	@echo "Running prometheus for remote write"
+	@rm -rf remote/remote_test/remote-write-data/
+	@prometheus --config.file=remote/remote_test/prometheus_write.yml --storage.tsdb.path=remote/remote_test/remote-write-data --web.listen-address=0.0.0.0:9097
+
+up-remote-read:
+	@echo "Running prometheus for remote read"
+	@rm -rf remote/remote_test/remote-read-data/
+	@prometheus --config.file=remote/remote_test/prometheus_read.yml --storage.tsdb.path=remote/remote_test/remote-read-data --web.listen-address=0.0.0.0:9098

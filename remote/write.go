@@ -24,7 +24,9 @@ func WriteHandler(storage store.MetricStorage) http.HandlerFunc {
 		}
 
 		now := time.Now()
-		defer log.Info("write timeseries done", zap.Int("count", len(req.Timeseries)), zap.Duration("duration", time.Since(now)))
+		defer func() {
+			log.Info("write timeseries done", zap.Int("count", len(req.Timeseries)), zap.Duration("duration", time.Since(now)))
+		}()
 
 		for _, series := range req.Timeseries {
 			var storeTS store.TimeSeries
