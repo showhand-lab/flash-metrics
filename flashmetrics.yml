@@ -3,7 +3,11 @@ tidb:
   address: 0.0.0.0:4000
 
 web:
-  address: 0.0.0.0:1200
+  address: 0.0.0.0:9977
+
+logs:
+  log_level: info
+  log_file: flashmetrics.log
 
 scrape_configs:
   - job_name: default job

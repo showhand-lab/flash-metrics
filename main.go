@@ -26,44 +26,45 @@ import (
 
 const (
 	nmConfigFilePath = "config.file"
-	nmAddr           = "address"
-	nmTiDBAddr       = "tidb.address"
-	nmLogLevel       = "log.level"
-	nmLogFile        = "log.file"
-	nmCleanup        = "cleanup"
+	//nmAddr           = "address"
+	//nmTiDBAddr       = "tidb.address"
+	//nmLogLevel       = "log.level"
+	//nmLogFile        = "log.file"
+	nmCleanup = "cleanup"
 )
 
 var (
 	cfgFilePath = flag.String(nmConfigFilePath, "./flashmetrics.yml", "YAML config file path for flashmetrics.")
-	tidbAddr    = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
-	listenAddr  = flag.String(nmAddr, "127.0.0.1:9977", "TCP address to listen for http connections")
-	logLevel    = flag.String(nmLogLevel, "info", "Log level")
-	logPath     = flag.String(nmLogFile, "", "Log file")
 	cleanup     = flag.Bool(nmCleanup, false, "Whether to cleanup data during shutting down, set for debug")
+	// TODO: override config file values with flag arguments.
+	//tidbAddr    = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
+	//listenAddr  = flag.String(nmAddr, "127.0.0.1:9977", "TCP address to listen for http connections")
+	//logLevel    = flag.String(nmLogLevel, "info", "Log level")
+	//logPath     = flag.String(nmLogFile, "", "Log file")
 )
 
-func initLogger() {
-	cfg := &log.Config{Level: *logLevel}
+func initLogger(cfg *config.FlashMetricsConfig) {
+	logCfg := &log.Config{Level: cfg.LogConfig.LogLevel}
 
-	if *logPath != "" {
-		cfg.File.Filename = *logPath
+	if cfg.LogConfig.LogFile != "" {
+		logCfg.File.Filename = cfg.LogConfig.LogFile
 	}
 
-	logger, p, err := log.InitLogger(cfg)
+	logger, p, err := log.InitLogger(logCfg)
 	if err != nil {
 		stdlog.Fatalf("failed to init logger, err: %s", err)
 	}
 	log.ReplaceGlobals(logger, p)
 }
 
-func initDatabase() *sql.DB {
+func initDatabase(cfg *config.FlashMetricsConfig) *sql.DB {
 	now := time.Now()
 	log.Info("setting up database")
 	defer func() {
 		log.Info("init database done", zap.Duration("in", time.Since(now)))
 	}()
 
-	db, err := sql.Open("mysql", fmt.Sprintf("root@(%s)/test", *tidbAddr))
+	db, err := sql.Open("mysql", fmt.Sprintf("root@(%s)/test", cfg.TiDBConfig.Address))
 	if err != nil {
 		log.Fatal("failed to open db", zap.Error(err))
 	}
@@ -123,30 +124,30 @@ func waitForSigterm() os.Signal {
 
 func main() {
 	flag.Parse()
-	initLogger()
-
-	printer.PrintFlashMetricsStorageInfo()
-	cfg, err := config.LoadConfig(*cfgFilePath)
+	// TODO: override config file values with flag arguments.
+	flashMetricsConfig, err := config.LoadConfig(*cfgFilePath)
 	if err != nil {
 		log.Fatal("fail to load config file ", zap.String("config.file", *cfgFilePath))
 	}
-	cfg.WebConfig.Address = *listenAddr
-	cfg.TiDBConfig.Address = *tidbAddr
+	initLogger(flashMetricsConfig)
 
-	if len(*listenAddr) == 0 {
-		log.Fatal("empty listen address", zap.String("listen-address", *listenAddr))
+	printer.PrintFlashMetricsStorageInfo()
+
+	if len(flashMetricsConfig.WebConfig.Address) == 0 {
+		log.Fatal("empty listen address", zap.String("listen-address", flashMetricsConfig.WebConfig.Address))
 	}
 
-	db := initDatabase()
+	db := initDatabase(flashMetricsConfig)
 	defer closeDatabase(db)
 
 	storage := store.NewDefaultMetricStorage(db)
-	service.Init(*listenAddr, storage)
+
+	service.Init(flashMetricsConfig, storage)
 	defer service.Stop()
 
-	ctx, cancelScrapeFunc := context.WithCancel(context.Background())
-	scrape.Init(ctx, storage, cfg)
-	defer cancelScrapeFunc()
+	scrapeCtx, cancelScrape := context.WithCancel(context.Background())
+	scrape.Init(flashMetricsConfig, scrapeCtx, storage)
+	defer cancelScrape()
 
 	sig := waitForSigterm()
 	log.Info("received signal", zap.String("sig", sig.String()))

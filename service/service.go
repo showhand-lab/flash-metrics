@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/showhand-lab/flash-metrics-storage/config"
 	"net"
 
 	"github.com/showhand-lab/flash-metrics-storage/service/http"
@@ -10,7 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func Init(addr string, storage store.MetricStorage) {
+func Init(cfg *config.FlashMetricsConfig, storage store.MetricStorage) {
+	addr := cfg.WebConfig.Address
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal("failed to listen",

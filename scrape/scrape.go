@@ -42,7 +42,7 @@ func scrapeJob(ctx context.Context, scrapeConfig *config.ScrapeConfig) {
 	}
 }
 
-func Init(ctx context.Context, metricStore store.MetricStorage, flashMetricsConfig *config.FlashMetricsConfig) {
+func Init(flashMetricsConfig *config.FlashMetricsConfig, ctx context.Context, metricStore store.MetricStorage) {
 	for _, scrapeConfig := range flashMetricsConfig.ScrapeConfigs {
 		go scrapeJob(ctx, scrapeConfig)
 	}
@@ -188,7 +188,7 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 
 	for _, tseries := range timeSeries {
 		// TODO: 使用 batch store
-		log.Info("time series",
+		log.Debug("time series",
 			zap.String("name", tseries.Name),
 			zap.Int64("sample timestamp", tseries.Samples[0].TimestampMs),
 			zap.Float64("sample value", tseries.Samples[0].Value))

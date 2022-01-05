@@ -27,10 +27,16 @@ type ScrapeConfig struct {
 	StaticConfigs  []StaticConfig `yaml:"static_configs"`
 }
 
+type LogConfig struct {
+	LogLevel string `yaml:"log_level"`
+	LogFile  string `yaml:"log_file"`
+}
+
 type FlashMetricsConfig struct {
 	TiDBConfig    TiDBConfig      `yaml:"tidb"`
 	WebConfig     WebConfig       `yaml:"web"`
 	ScrapeConfigs []*ScrapeConfig `yaml:"scrape_configs"`
+	LogConfig     LogConfig       `yaml:"logs"`
 }
 
 var DefaultFlashMetricsConfig = FlashMetricsConfig{
