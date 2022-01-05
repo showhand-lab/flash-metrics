@@ -21,12 +21,14 @@ import (
 const (
 	nmTiDBAddr = "tidb.address"
 	nmAddr     = "address"
+	nmLogLevel = "log.level"
 )
 
 // flags
 var (
-	tidbAddr   = flag.String(nmTiDBAddr, "", "The address of TiDB")
-	listenAddr = flag.String(nmAddr, "", "TCP address to listen for http connections")
+	tidbAddr   = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
+	listenAddr = flag.String(nmAddr, "127.0.0.1:9091", "TCP address to listen for http connections")
+	logLevel   = flag.String(nmLogLevel, "info", "Log level")
 )
 
 // global variables
@@ -35,6 +37,15 @@ var (
 
 	mstore store.MetricStorage
 )
+
+func setLogLevel() {
+	oldLevel := log.GetLevel()
+	err := oldLevel.Set(*logLevel)
+	if err != nil {
+		log.Fatal("set log level failed", zap.Error(err))
+	}
+	log.SetLevel(oldLevel)
+}
 
 func initDatabase() {
 	if len(*tidbAddr) == 0 {
@@ -81,6 +92,8 @@ func closeStore() {}
 
 func main() {
 	flag.Parse()
+
+	setLogLevel()
 
 	printer.PrintFlashMetricsStorageInfo()
 
