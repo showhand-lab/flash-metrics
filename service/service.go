@@ -3,9 +3,10 @@ package service
 import (
 	"net"
 
-	"github.com/pingcap/log"
 	"github.com/showhand-lab/flash-metrics-storage/service/http"
 	"github.com/showhand-lab/flash-metrics-storage/store"
+
+	"github.com/pingcap/log"
 	"go.uber.org/zap"
 )
 

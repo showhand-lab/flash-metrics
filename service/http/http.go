@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/pingcap/log"
 	"github.com/showhand-lab/flash-metrics-storage/remote"
 	"github.com/showhand-lab/flash-metrics-storage/store"
+
+	"github.com/pingcap/log"
 	"go.uber.org/zap"
 )
 

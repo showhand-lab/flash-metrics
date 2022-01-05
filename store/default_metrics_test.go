@@ -6,10 +6,12 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/showhand-lab/flash-metrics-storage/store"
 	"github.com/showhand-lab/flash-metrics-storage/utils"
+
 	"github.com/stretchr/testify/suite"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func TestDefaultMetrics(t *testing.T) {
@@ -149,6 +151,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 		LabelValue: ".*T",
 		IsRE:       true,
 	}})
+	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })
 	s.Equal(ts, []store.TimeSeries{{
@@ -185,6 +188,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 		IsRE:       true,
 		IsNegative: true,
 	}})
+	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	s.Equal(ts, []store.TimeSeries{{
 		Name: "api_http_requests_total",

@@ -10,13 +10,15 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/pingcap/log"
 	"github.com/showhand-lab/flash-metrics-storage/service"
 	"github.com/showhand-lab/flash-metrics-storage/store"
 	"github.com/showhand-lab/flash-metrics-storage/table"
 	"github.com/showhand-lab/flash-metrics-storage/utils/printer"
+
+	"github.com/pingcap/log"
 	"go.uber.org/zap"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 const (
@@ -101,6 +103,19 @@ func closeDatabase(db *sql.DB) {
 	}
 }
 
+func waitForSigterm() os.Signal {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	for {
+		sig := <-ch
+		if sig == syscall.SIGHUP {
+			// Prevent from the program stop on SIGHUP
+			continue
+		}
+		return sig
+	}
+}
+
 func main() {
 	flag.Parse()
 	initLogger()
@@ -117,19 +132,6 @@ func main() {
 	service.Init(*listenAddr, storage)
 	defer service.Stop()
 
-	sig := WaitForSigterm()
+	sig := waitForSigterm()
 	log.Info("received signal", zap.String("sig", sig.String()))
-}
-
-func WaitForSigterm() os.Signal {
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-	for {
-		sig := <-ch
-		if sig == syscall.SIGHUP {
-			// Prevent from the program stop on SIGHUP
-			continue
-		}
-		return sig
-	}
 }

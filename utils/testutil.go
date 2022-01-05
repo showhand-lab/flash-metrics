@@ -4,8 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/showhand-lab/flash-metrics-storage/table"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func PingTiDB() error {

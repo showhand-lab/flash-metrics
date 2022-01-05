@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/snappy"
-	"github.com/prometheus/prometheus/prompb"
 	"github.com/showhand-lab/flash-metrics-storage/remote"
 	"github.com/showhand-lab/flash-metrics-storage/store"
 	"github.com/showhand-lab/flash-metrics-storage/utils"
+
+	"github.com/golang/snappy"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/suite"
 )
 

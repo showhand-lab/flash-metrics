@@ -4,3 +4,4 @@ coverage.txt
 tidb.config
 remote-write-data/
 remote-read-data/
+tools/bin/

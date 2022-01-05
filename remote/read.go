@@ -5,11 +5,11 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/showhand-lab/flash-metrics-storage/store"
+
 	"github.com/golang/snappy"
 	"github.com/pingcap/log"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/showhand-lab/flash-metrics-storage/store"
 	"go.uber.org/zap"
 )
 
@@ -96,7 +96,8 @@ func ReadHandler(storage store.MetricStorage) http.HandlerFunc {
 			*queryResults = append(*queryResults, &prompb.QueryResult{Timeseries: seriesRes})
 		}
 
-		data, err := proto.Marshal(&prompb.ReadResponse{Results: *queryResults})
+		resp := &prompb.ReadResponse{Results: *queryResults}
+		data, err := resp.Marshal()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -120,10 +121,10 @@ func decodeReadRequest(r io.Reader) (*prompb.ReadRequest, error) {
 		return nil, err
 	}
 
-	var req prompb.ReadRequest
-	if err = proto.Unmarshal(reqBuf, &req); err != nil {
+	req := &prompb.ReadRequest{}
+	if err = req.Unmarshal(reqBuf); err != nil {
 		return nil, err
 	}
 
-	return &req, nil
+	return req, nil
 }

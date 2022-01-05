@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/showhand-lab/flash-metrics-storage/store"
+
 	"github.com/golang/snappy"
 	"github.com/pingcap/log"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/showhand-lab/flash-metrics-storage/store"
 	"go.uber.org/zap"
 )
 
@@ -78,10 +78,10 @@ func decodeWriteRequest(r io.Reader) (*prompb.WriteRequest, error) {
 		return nil, err
 	}
 
-	var req prompb.WriteRequest
-	if err := proto.Unmarshal(reqBuf, &req); err != nil {
+	req := &prompb.WriteRequest{}
+	if err = req.Unmarshal(reqBuf); err != nil {
 		return nil, err
 	}
 
-	return &req, nil
+	return req, nil
 }

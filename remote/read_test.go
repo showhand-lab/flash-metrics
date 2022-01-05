@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/snappy"
-	"github.com/prometheus/prometheus/prompb"
 	"github.com/showhand-lab/flash-metrics-storage/remote"
 	"github.com/showhand-lab/flash-metrics-storage/store"
 	"github.com/showhand-lab/flash-metrics-storage/utils"
+
+	"github.com/golang/snappy"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -165,8 +165,8 @@ func (s *testRemoteReadSuite) TestBasic() {
 	respBytes, err := snappy.Decode(nil, respBuf.Bytes())
 	s.NoError(err)
 
-	var readResp prompb.ReadResponse
-	err = proto.Unmarshal(respBytes, &readResp)
+	readResp := &prompb.ReadResponse{}
+	err = readResp.Unmarshal(respBytes)
 	s.NoError(err)
 
 	for _, q := range readResp.Results {
@@ -174,7 +174,7 @@ func (s *testRemoteReadSuite) TestBasic() {
 			sort.Slice(t.Labels, func(i, j int) bool { return t.Labels[i].Name < t.Labels[j].Name })
 		}
 	}
-	s.Equal(readResp, prompb.ReadResponse{Results: []*prompb.QueryResult{{
+	s.Equal(readResp, &prompb.ReadResponse{Results: []*prompb.QueryResult{{
 		Timeseries: []*prompb.TimeSeries{{
 			Labels: []*prompb.Label{{
 				Name:  "__name__",

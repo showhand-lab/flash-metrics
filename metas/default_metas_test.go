@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"testing"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/showhand-lab/flash-metrics-storage/metas"
 	"github.com/showhand-lab/flash-metrics-storage/utils"
+
 	"github.com/stretchr/testify/suite"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func TestDefaultMetas(t *testing.T) {
@@ -140,7 +142,7 @@ func (s *testDefaultMetasSuite) TestLabelLimit() {
 		"label-5": 5,
 	})
 
-	m, err = metaStorage.StoreMeta("metric_wide", []string{
+	_, err = metaStorage.StoreMeta("metric_wide", []string{
 		"label-6",
 		"label-7",
 		"label-8",
@@ -166,6 +168,7 @@ func (s *testDefaultMetasSuite) TestLabelLimit() {
 		"label-13",
 		"label-14",
 	})
+	s.NoError(err)
 	s.Equal(m.MetricName, "metric_wide")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{
 		"label-0":  0,
