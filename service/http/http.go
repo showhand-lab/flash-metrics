@@ -19,7 +19,10 @@ func ServeHTTP(listener net.Listener) {
 	mux.HandleFunc("/read", remote.ReadHandler)
 
 	mux.HandleFunc("/api/v1/query", QueryHandler)
-	// mux.HandleFunc("/api/v1/query", QueryRangeHandler)
+	mux.HandleFunc("/api/v1/query_range", QueryRangeHandler)
+	// mux.HandleFunc("/match", _)
+
+	mux.HandleFunc("/", DefaultHandler)
 
 	httpServer = &http.Server{Handler: mux}
 	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {

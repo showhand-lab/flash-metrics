@@ -44,6 +44,34 @@ func QueryHandler(w http.ResponseWriter, r *http.Request) {
 		log.Debug("", zap.String("key", key), zap.Strings("value", value))
 	}
 
+	//scalar := promql.Scalar{T: 1, V: 1.0}
+	//data := queryData{
+	//	"scalar",
+	//	scalar,
+	//	nil,
+	//}
+	//respond(w, data)
+}
+
+func QueryRangeHandler(w http.ResponseWriter, r *http.Request) {
+	compressed, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Debug("received http request:", zap.ByteString("request", compressed))
+
+	values, err := url.ParseQuery(string(compressed))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	for key, value := range values {
+		log.Debug("", zap.String("key", key), zap.Strings("value", value))
+	}
+
 	scalar := promql.Scalar{T: 1, V: 1.0}
 	data := queryData{
 		"scalar",
@@ -51,6 +79,28 @@ func QueryHandler(w http.ResponseWriter, r *http.Request) {
 		nil,
 	}
 	respond(w, data)
+}
+
+func DefaultHandler(w http.ResponseWriter, r *http.Request) {
+	compressed, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Debug("received default http request:", zap.ByteString("request", compressed))
+
+	values, err := url.ParseQuery(string(compressed))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	for key, value := range values {
+		log.Debug("", zap.String("key", key), zap.Strings("value", value))
+	}
+
+	w.WriteHeader(http.StatusNotFound)
 }
 
 func respond(w http.ResponseWriter, data interface{}) {
