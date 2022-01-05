@@ -18,6 +18,9 @@ func ServeHTTP(listener net.Listener) {
 	mux.HandleFunc("/write", remote.WriteHandler)
 	mux.HandleFunc("/read", remote.ReadHandler)
 
+	mux.HandleFunc("/api/v1/query", QueryHandler)
+	// mux.HandleFunc("/api/v1/query", QueryRangeHandler)
+
 	httpServer = &http.Server{Handler: mux}
 	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 		log.Warn("failed to serve http service", zap.Error(err))
