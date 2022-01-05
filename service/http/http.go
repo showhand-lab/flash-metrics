@@ -31,6 +31,9 @@ func StopHTTP() {
 	}
 
 	log.Info("shutting down http server")
-	_ = httpServer.Close()
+	if err := httpServer.Close(); err != nil {
+		log.Warn("failed to close http server", zap.Error(err))
+	}
+	httpServer = nil
 	log.Info("http server is down")
 }

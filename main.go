@@ -39,7 +39,7 @@ var (
 	db *sql.DB
 )
 
-func initLog() {
+func initLogger() {
 	cfg := &log.Config{Level: *logLevel}
 	logger, p, err := log.InitLogger(cfg)
 	if err != nil {
@@ -94,11 +94,10 @@ func closeDatabase() {
 }
 
 func main() {
-	flag.Parse()
-
 	printer.PrintFlashMetricsStorageInfo()
 
-	initLog()
+	flag.Parse()
+	initLogger()
 
 	initDatabase()
 	defer closeDatabase()
