@@ -13,6 +13,10 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	queryResultP = QueryResultSlicePool{}
+)
+
 func ReadHandler(mstore store.MetricStorage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req, err := decodeReadRequest(r.Body)
@@ -21,7 +25,9 @@ func ReadHandler(mstore store.MetricStorage) http.HandlerFunc {
 			return
 		}
 
-		var res []*prompb.TimeSeries
+		queryResults := queryResultP.Get()
+		defer queryResultP.Put(queryResults)
+
 	OUTER:
 		for _, query := range req.Queries {
 			var metricName string
@@ -30,7 +36,7 @@ func ReadHandler(mstore store.MetricStorage) http.HandlerFunc {
 			for _, qMatcher := range query.Matchers {
 				if qMatcher.Name == "__name__" {
 					if qMatcher.Type == prompb.LabelMatcher_EQ {
-						metricName = qMatcher.Name
+						metricName = qMatcher.Value
 					} else {
 						log.Warn("not support other matchers for metric name except equal", zap.Any("query", query))
 						continue OUTER
@@ -47,18 +53,21 @@ func ReadHandler(mstore store.MetricStorage) http.HandlerFunc {
 
 			if metricName == "" {
 				log.Warn("metric name not found, ignored", zap.Any("query", query))
+				*queryResults = append(*queryResults, nil)
 				continue
 			}
 
 			ts, err := mstore.Query(query.StartTimestampMs, query.EndTimestampMs, metricName, matcher)
 			if err != nil {
 				log.Warn("failed to query", zap.Any("query", query), zap.Error(err))
+				*queryResults = append(*queryResults, nil)
 				continue
 			}
 
+			seriesRes := make([]*prompb.TimeSeries, 0, len(ts))
 			for _, series := range ts {
-				var pLabels []*prompb.Label
-				var pSamples []prompb.Sample
+				pLabels := make([]*prompb.Label, 0, len(series.Labels)+1)
+				pSamples := make([]prompb.Sample, 0, len(series.Samples))
 
 				pLabels = append(pLabels, &prompb.Label{
 					Name:  "__name__",
@@ -79,14 +88,15 @@ func ReadHandler(mstore store.MetricStorage) http.HandlerFunc {
 					})
 				}
 
-				res = append(res, &prompb.TimeSeries{
+				seriesRes = append(seriesRes, &prompb.TimeSeries{
 					Labels:  pLabels,
 					Samples: pSamples,
 				})
 			}
+			*queryResults = append(*queryResults, &prompb.QueryResult{Timeseries: seriesRes})
 		}
 
-		data, err := proto.Marshal(&prompb.ReadResponse{Results: []*prompb.QueryResult{{Timeseries: res}}})
+		data, err := proto.Marshal(&prompb.ReadResponse{Results: *queryResults})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
