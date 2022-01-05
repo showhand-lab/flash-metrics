@@ -10,23 +10,31 @@ import (
 	"github.com/showhand-lab/flash-metrics-storage/store"
 	"go.uber.org/zap"
 	"net/http"
+	"sync"
 	"time"
 )
 
-var scrapeLoop struct {
-	ctx           context.Context
-	metricStore   store.MetricStorage
-	ScrapeConfigs *config.FlashMetricsConfig
+type scrapeEvent struct {
+	httpClient   *http.Client
+	scrapeConfig *config.ScrapeConfig
 }
 
-var jobsEventChan = make(chan *config.ScrapeConfig)
+func newScrapeEvent(cfg *config.ScrapeConfig) *scrapeEvent {
+	return &scrapeEvent{
+		httpClient:   &http.Client{Timeout: cfg.ScrapeTimeout},
+		scrapeConfig: cfg,
+	}
+}
+
+var jobsEventChan = make(chan *scrapeEvent)
 
 func scrapeJob(ctx context.Context, scrapeConfig *config.ScrapeConfig) {
 	ticker := time.NewTicker(scrapeConfig.ScrapeInterval)
+	relatedScrapeEvent := newScrapeEvent(scrapeConfig)
 	for {
 		select {
 		case <-ticker.C:
-			jobsEventChan <- scrapeConfig
+			jobsEventChan <- relatedScrapeEvent
 		case <-ctx.Done():
 			ticker.Stop()
 			return
@@ -35,10 +43,6 @@ func scrapeJob(ctx context.Context, scrapeConfig *config.ScrapeConfig) {
 }
 
 func Init(ctx context.Context, metricStore store.MetricStorage, flashMetricsConfig *config.FlashMetricsConfig) {
-	scrapeLoop.ctx = ctx
-	scrapeLoop.metricStore = metricStore
-	scrapeLoop.ScrapeConfigs = flashMetricsConfig
-
 	for _, scrapeConfig := range flashMetricsConfig.ScrapeConfigs {
 		go scrapeJob(ctx, scrapeConfig)
 	}
@@ -54,9 +58,9 @@ func Init(ctx context.Context, metricStore store.MetricStorage, flashMetricsConf
 	}
 }
 
-// FIXME: 还没测试，应该还需要 goroutine 上的修改
-func scrapeTarget(metricStore store.MetricStorage, url string) {
-	resp, err := http.Get(url)
+func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string, metricStore store.MetricStorage) {
+	defer wg.Done()
+	resp, err := httpClient.Get(targetUrl)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -79,9 +83,17 @@ func scrapeTarget(metricStore store.MetricStorage, url string) {
 			switch metricFamily.GetType() {
 			case io_prometheus_client.MetricType_COUNTER:
 				value = metric.Counter.GetValue()
+			case io_prometheus_client.MetricType_GAUGE:
+				value = metric.Gauge.GetValue()
+			case io_prometheus_client.MetricType_UNTYPED:
+				value = metric.Untyped.GetValue()
+				// TODO: 确定 Summary 和 Histogram 怎么存储
+				//case io_prometheus_client.MetricType_SUMMARY:
+				//	value = metric.Summary.Quantile
+				//case io_prometheus_client.MetricType_HISTOGRAM:
+				//	value = metric.Histogram.Bucket
 			}
 
-			// FIXME: 不知道怎样对应出来多个 samples
 			samples := make([]store.Sample, 1)
 			samples = append(samples, store.Sample{
 				Timestamp: time.Now().Unix(),
@@ -97,6 +109,8 @@ func scrapeTarget(metricStore store.MetricStorage, url string) {
 				zap.String("name", timeSeries.Name),
 				zap.Int64("sample timestamp", timeSeries.Samples[0].Timestamp),
 				zap.Float64("sample value", timeSeries.Samples[0].Value))
+
+			// TODO: 放在外循环，然后使用 batch store
 			err := metricStore.Store(timeSeries)
 			if err != nil {
 				return
@@ -106,13 +120,19 @@ func scrapeTarget(metricStore store.MetricStorage, url string) {
 	}
 }
 
-func scrape(metricStore store.MetricStorage, scrapeConfig *config.ScrapeConfig) {
+func scrape(metricStore store.MetricStorage, scrapeEvent *scrapeEvent) {
+	wg := sync.WaitGroup{}
+	scrapeConfig := scrapeEvent.scrapeConfig
 	for _, staticConfig := range scrapeConfig.StaticConfigs {
 		for _, target := range staticConfig.Targets {
+			wg.Add(1)
 			go scrapeTarget(
-				metricStore,
+				&wg,
+				scrapeEvent.httpClient,
 				fmt.Sprintf("%s://%s%s", scrapeConfig.Scheme, target, scrapeConfig.MetricsPath),
+				metricStore,
 			)
 		}
 	}
+	wg.Wait()
 }
