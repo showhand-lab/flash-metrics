@@ -1,9 +1,9 @@
 package service
 
 import (
-	"github.com/showhand-lab/flash-metrics-storage/config"
 	"net"
 
+	"github.com/showhand-lab/flash-metrics-storage/config"
 	"github.com/showhand-lab/flash-metrics-storage/service/http"
 	"github.com/showhand-lab/flash-metrics-storage/store"
 

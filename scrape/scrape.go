@@ -3,15 +3,17 @@ package scrape
 import (
 	"context"
 	"fmt"
-	"github.com/pingcap/log"
-	io_prometheus_client "github.com/prometheus/client_model/go"
-	"github.com/prometheus/common/expfmt"
-	"github.com/showhand-lab/flash-metrics-storage/config"
-	"github.com/showhand-lab/flash-metrics-storage/store"
-	"go.uber.org/zap"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/showhand-lab/flash-metrics-storage/config"
+	"github.com/showhand-lab/flash-metrics-storage/store"
+
+	"github.com/pingcap/log"
+	io_prometheus_client "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
+	"go.uber.org/zap"
 )
 
 type scrapeEvent struct {
@@ -72,6 +74,10 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 
 	var textMetricParser expfmt.TextParser
 	metricFamilyMap, err := textMetricParser.TextToMetricFamilies(resp.Body)
+	if err != nil {
+		log.Error(err.Error(), zap.String("target", targetUrl))
+		return
+	}
 
 	timeSeries := make([]store.TimeSeries, 0)
 	nowMs := time.Now().UnixMilli()
