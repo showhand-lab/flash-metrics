@@ -1,9 +1,11 @@
 package remote
 
 import (
+	"context"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/showhand-lab/flash-metrics-storage/store"
 
@@ -13,12 +15,19 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	defaultReadTimeout = 1 * time.Minute
+)
+
 var (
 	queryResultP = QueryResultSlicePool{}
 )
 
 func ReadHandler(storage store.MetricStorage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(context.Background(), defaultReadTimeout)
+		defer cancel()
+
 		req, err := decodeReadRequest(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -57,7 +66,7 @@ func ReadHandler(storage store.MetricStorage) http.HandlerFunc {
 				continue
 			}
 
-			ts, err := storage.Query(query.StartTimestampMs, query.EndTimestampMs, metricName, matcher)
+			ts, err := storage.Query(ctx, query.StartTimestampMs, query.EndTimestampMs, metricName, matcher)
 			if err != nil {
 				log.Warn("failed to query", zap.Any("query", query), zap.Error(err))
 				*queryResults = append(*queryResults, nil)

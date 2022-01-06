@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"context"
 	"io"
 	"io/ioutil"
 	"math"
@@ -15,8 +16,15 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	defaultWriteTimeout = 1 * time.Minute
+)
+
 func WriteHandler(storage store.MetricStorage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(context.Background(), defaultWriteTimeout)
+		defer cancel()
+
 		req, err := decodeWriteRequest(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -55,7 +63,7 @@ func WriteHandler(storage store.MetricStorage) http.HandlerFunc {
 			}
 
 			n := time.Now()
-			if err = storage.Store(storeTS); err != nil {
+			if err = storage.Store(ctx, storeTS); err != nil {
 				log.Warn("failed to store timeseries", zap.Error(err), zap.Any("timeseries", series))
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return

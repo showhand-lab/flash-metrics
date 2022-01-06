@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"context"
 	"database/sql"
 	"sort"
 	"testing"
@@ -40,7 +41,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	now := time.Now().UnixNano() / int64(time.Millisecond)
 
 	metricStorage := store.NewDefaultMetricStorage(s.db)
-	err := metricStorage.Store(store.TimeSeries{
+	err := metricStorage.Store(context.Background(), store.TimeSeries{
 		Name: "api_http_requests_total",
 		Labels: []store.Label{{
 			Name:  "method",
@@ -59,7 +60,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	})
 	s.NoError(err)
 
-	err = metricStorage.Store(store.TimeSeries{
+	err = metricStorage.Store(context.Background(), store.TimeSeries{
 		Name: "api_http_requests_total",
 		Labels: []store.Label{{
 			Name:  "method",
@@ -75,7 +76,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	})
 	s.NoError(err)
 
-	ts, err := metricStorage.Query(now, now, "api_http_requests_total", nil)
+	ts, err := metricStorage.Query(context.Background(), now, now, "api_http_requests_total", nil)
 	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })
@@ -107,7 +108,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 		}},
 	}})
 
-	ts, err = metricStorage.Query(now, now+15, "api_http_requests_total", []store.Matcher{{
+	ts, err = metricStorage.Query(context.Background(), now, now+15, "api_http_requests_total", []store.Matcher{{
 		LabelName:  "method",
 		LabelValue: "GET",
 	}})
@@ -131,14 +132,14 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 		}},
 	}})
 
-	ts, err = metricStorage.Query(now, now+15, "api_http_requests_total", []store.Matcher{{
+	ts, err = metricStorage.Query(context.Background(), now, now+15, "api_http_requests_total", []store.Matcher{{
 		LabelName:  "job",
 		LabelValue: "tidb",
 	}})
 	s.NoError(err)
 	s.Equal(len(ts), 0)
 
-	ts, err = metricStorage.Query(now+15, now+15, "api_http_requests_total", []store.Matcher{{
+	ts, err = metricStorage.Query(context.Background(), now+15, now+15, "api_http_requests_total", []store.Matcher{{
 		LabelName:  "method",
 		LabelValue: "GET",
 		IsNegative: true,
@@ -146,7 +147,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	s.NoError(err)
 	s.Equal(len(ts), 0)
 
-	ts, err = metricStorage.Query(now, now, "api_http_requests_total", []store.Matcher{{
+	ts, err = metricStorage.Query(context.Background(), now, now, "api_http_requests_total", []store.Matcher{{
 		LabelName:  "method",
 		LabelValue: ".*T",
 		IsRE:       true,
@@ -182,7 +183,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 		}},
 	}})
 
-	ts, err = metricStorage.Query(now, now, "api_http_requests_total", []store.Matcher{{
+	ts, err = metricStorage.Query(context.Background(), now, now, "api_http_requests_total", []store.Matcher{{
 		LabelName:  "method",
 		LabelValue: "PO.*",
 		IsRE:       true,

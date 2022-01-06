@@ -2,6 +2,7 @@ package remote_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"net/http"
 	"sort"
@@ -94,7 +95,7 @@ func (s *testRemoteWriteSuite) TestBasic() {
 	s.True(httpResp.Code >= 200 && httpResp.Code < 300)
 	s.Equal(respBuf.String(), "ok")
 
-	ts, err := s.storage.Query(now, now+15, "api_http_requests_total", nil)
+	ts, err := s.storage.Query(context.Background(), now, now+15, "api_http_requests_total", nil)
 	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })

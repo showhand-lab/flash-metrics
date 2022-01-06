@@ -1,6 +1,7 @@
 package metas_test
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -36,34 +37,26 @@ func (s *testDefaultMetasSuite) TearDownSuite() {
 
 func (s *testDefaultMetasSuite) TestBasic() {
 	metaStorage := metas.NewDefaultMetaStorage(s.db)
-	m, err := metaStorage.QueryMeta("metric_a")
+	m, err := metaStorage.QueryMeta(context.Background(), "metric_a")
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_a")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{})
 
-	m, err = metaStorage.StoreMeta("metric_a", []string{"label_x"})
+	m, err = metaStorage.StoreMeta(context.Background(), "metric_a", []string{"label_x"})
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_a")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{
 		"label_x": 0,
 	})
 
-	m, err = metaStorage.QueryMeta("metric_a")
+	m, err = metaStorage.QueryMeta(context.Background(), "metric_a")
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_a")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{
 		"label_x": 0,
 	})
 
-	m, err = metaStorage.StoreMeta("metric_a", []string{"label_y"})
-	s.NoError(err)
-	s.Equal(m.MetricName, "metric_a")
-	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{
-		"label_x": 0,
-		"label_y": 1,
-	})
-
-	m, err = metaStorage.QueryMeta("metric_a")
+	m, err = metaStorage.StoreMeta(context.Background(), "metric_a", []string{"label_y"})
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_a")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{
@@ -71,7 +64,7 @@ func (s *testDefaultMetasSuite) TestBasic() {
 		"label_y": 1,
 	})
 
-	m, err = metaStorage.StoreMeta("metric_a", []string{"label_x"})
+	m, err = metaStorage.QueryMeta(context.Background(), "metric_a")
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_a")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{
@@ -79,7 +72,7 @@ func (s *testDefaultMetasSuite) TestBasic() {
 		"label_y": 1,
 	})
 
-	m, err = metaStorage.StoreMeta("metric_a", []string{"label_y"})
+	m, err = metaStorage.StoreMeta(context.Background(), "metric_a", []string{"label_x"})
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_a")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{
@@ -87,7 +80,7 @@ func (s *testDefaultMetasSuite) TestBasic() {
 		"label_y": 1,
 	})
 
-	m, err = metaStorage.StoreMeta("metric_a", []string{"label_x", "label_y"})
+	m, err = metaStorage.StoreMeta(context.Background(), "metric_a", []string{"label_y"})
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_a")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{
@@ -95,14 +88,22 @@ func (s *testDefaultMetasSuite) TestBasic() {
 		"label_y": 1,
 	})
 
-	m, err = metaStorage.QueryMeta("metric_b")
+	m, err = metaStorage.StoreMeta(context.Background(), "metric_a", []string{"label_x", "label_y"})
+	s.NoError(err)
+	s.Equal(m.MetricName, "metric_a")
+	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{
+		"label_x": 0,
+		"label_y": 1,
+	})
+
+	m, err = metaStorage.QueryMeta(context.Background(), "metric_b")
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_b")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{})
 
 	// no cache affects
 	anotherStorage := metas.NewDefaultMetaStorage(s.db)
-	m, err = anotherStorage.QueryMeta("metric_a")
+	m, err = anotherStorage.QueryMeta(context.Background(), "metric_a")
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_a")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{
@@ -110,7 +111,7 @@ func (s *testDefaultMetasSuite) TestBasic() {
 		"label_y": 1,
 	})
 
-	m, err = anotherStorage.QueryMeta("metric_b")
+	m, err = anotherStorage.QueryMeta(context.Background(), "metric_b")
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_b")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{})
@@ -118,12 +119,12 @@ func (s *testDefaultMetasSuite) TestBasic() {
 
 func (s *testDefaultMetasSuite) TestLabelLimit() {
 	metaStorage := metas.NewDefaultMetaStorage(s.db)
-	m, err := metaStorage.QueryMeta("metric_wide")
+	m, err := metaStorage.QueryMeta(context.Background(), "metric_wide")
 	s.NoError(err)
 	s.Equal(m.MetricName, "metric_wide")
 	s.Equal(m.Labels, map[metas.LabelName]metas.LabelID{})
 
-	m, err = metaStorage.StoreMeta("metric_wide", []string{
+	m, err = metaStorage.StoreMeta(context.Background(), "metric_wide", []string{
 		"label-0",
 		"label-1",
 		"label-2",
@@ -142,7 +143,7 @@ func (s *testDefaultMetasSuite) TestLabelLimit() {
 		"label-5": 5,
 	})
 
-	_, err = metaStorage.StoreMeta("metric_wide", []string{
+	_, err = metaStorage.StoreMeta(context.Background(), "metric_wide", []string{
 		"label-6",
 		"label-7",
 		"label-8",
@@ -157,7 +158,7 @@ func (s *testDefaultMetasSuite) TestLabelLimit() {
 	s.Error(err)
 	s.Contains(err.Error(), "exceed label limit")
 
-	m, err = metaStorage.StoreMeta("metric_wide", []string{
+	m, err = metaStorage.StoreMeta(context.Background(), "metric_wide", []string{
 		"label-6",
 		"label-7",
 		"label-8",

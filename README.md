@@ -1,9 +1,7 @@
 # Flash Metrics Storage
 
 ```shell
-$ cat << EOF > tidb.config
-max-index-length = 12288
-EOF
+$ echo -e "max-index-length = 12288" > tidb.config
 
 $ tiup playground nightly --db.config tidb.config
 

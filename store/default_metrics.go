@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"strconv"
 	"strings"
@@ -25,7 +26,7 @@ func NewDefaultMetricStorage(db *sql.DB) *DefaultMetricStorage {
 
 var _ MetricStorage = &DefaultMetricStorage{}
 
-func (d *DefaultMetricStorage) Store(timeSeries TimeSeries) error {
+func (d *DefaultMetricStorage) Store(ctx context.Context, timeSeries TimeSeries) error {
 	if len(timeSeries.Samples) == 0 {
 		return nil
 	}
@@ -35,30 +36,40 @@ func (d *DefaultMetricStorage) Store(timeSeries TimeSeries) error {
 		labelName = append(labelName, l.Name)
 	}
 
-	m, err := d.StoreMeta(timeSeries.Name, labelName)
+	m, err := d.StoreMeta(ctx, timeSeries.Name, labelName)
 	if err != nil {
 		return err
 	}
 
 	// insert index
-	if err = d.insertIndex(timeSeries, m); err != nil {
+	if err = d.insertIndex(ctx, timeSeries, m); err != nil {
 		return err
 	}
 
 	// get tsid
-	tsid, err := d.getTSID(timeSeries, m)
+	tsid, err := d.getTSID(ctx, timeSeries, m)
 	if err != nil {
 		return err
 	}
 
 	// insert updated date
-	if err = d.insertUpdatedDate(tsid, timeSeries); err != nil {
+	if err = d.insertUpdatedDate(ctx, tsid, timeSeries); err != nil {
 		return err
 	}
 
 	// insert data
-	return d.insertData(tsid, timeSeries)
+	return d.insertData(ctx, tsid, timeSeries)
 }
+
+//func (d *DefaultMetricStorage) BatchStore(ctx context.Context, timeSeries []TimeSeries) error {
+//	for _, ts := range timeSeries {
+//		if err := d.Store(ctx, ts); err != nil {
+//			return err
+//		}
+//	}
+//
+//	return nil
+//}
 
 // Query implements interface MetricStorage
 //
@@ -75,8 +86,8 @@ func (d *DefaultMetricStorage) Store(timeSeries TimeSeries) error {
 //    AND DATE(start_ts) <= updated_date AND updated_date <= DATE(end_ts)
 //    AND start_ts <= ts AND ts <= end_ts
 //  ORDER BY tsid, t;
-func (d *DefaultMetricStorage) Query(start, end int64, metricsName string, matchers []Matcher) ([]TimeSeries, error) {
-	m, err := d.QueryMeta(metricsName)
+func (d *DefaultMetricStorage) Query(ctx context.Context, start, end int64, metricsName string, matchers []Matcher) ([]TimeSeries, error) {
+	m, err := d.QueryMeta(ctx, metricsName)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +151,7 @@ WHERE
 	*args = append(*args, time.Unix(start/1000, (start%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
 	*args = append(*args, time.Unix(end/1000, (end%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
 
-	rows, err := d.db.Query(sb.String(), *args...)
+	rows, err := d.db.QueryContext(ctx, sb.String(), *args...)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +206,7 @@ WHERE
 }
 
 // INSERT IGNORE INTO flash_metrics_index (metric_name, label0, label1) VALUES (?, ?, ?);
-func (d *DefaultMetricStorage) insertIndex(timeSeries TimeSeries, m *metas.Meta) error {
+func (d *DefaultMetricStorage) insertIndex(ctx context.Context, timeSeries TimeSeries, m *metas.Meta) error {
 	args := interfaceSliceP.Get()
 	defer interfaceSliceP.Put(args)
 	var sb strings.Builder
@@ -213,12 +224,12 @@ func (d *DefaultMetricStorage) insertIndex(timeSeries TimeSeries, m *metas.Meta)
 		sb.WriteString(", ?")
 	}
 	sb.WriteString(");")
-	_, err := d.db.Exec(sb.String(), *args...)
+	_, err := d.db.ExecContext(ctx, sb.String(), *args...)
 	return err
 }
 
 // SELECT _tidb_rowid FROM flash_metrics_index WHERE metric_name = ? AND label0 = ? AND label1 = ?;
-func (d *DefaultMetricStorage) getTSID(timeSeries TimeSeries, m *metas.Meta) (int64, error) {
+func (d *DefaultMetricStorage) getTSID(ctx context.Context, timeSeries TimeSeries, m *metas.Meta) (int64, error) {
 	args := interfaceSliceP.Get()
 	defer interfaceSliceP.Put(args)
 	var sb strings.Builder
@@ -233,7 +244,7 @@ func (d *DefaultMetricStorage) getTSID(timeSeries TimeSeries, m *metas.Meta) (in
 		*args = append(*args, label.Value)
 	}
 	sb.WriteByte(';')
-	row := d.db.QueryRow(sb.String(), *args...)
+	row := d.db.QueryRowContext(ctx, sb.String(), *args...)
 	var res int64
 	if err := row.Scan(&res); err != nil {
 		return 0, err
@@ -242,7 +253,7 @@ func (d *DefaultMetricStorage) getTSID(timeSeries TimeSeries, m *metas.Meta) (in
 }
 
 // INSERT IGNORE INTO flash_metrics_update (tsid, updated_date) VALUES (?, ?), (?, ?), (?, ?);
-func (d *DefaultMetricStorage) insertUpdatedDate(tsid int64, timeSeries TimeSeries) error {
+func (d *DefaultMetricStorage) insertUpdatedDate(ctx context.Context, tsid int64, timeSeries TimeSeries) error {
 	dates := map[string]struct{}{}
 	for _, s := range timeSeries.Samples {
 		date := time.Unix(s.TimestampMs/1000, (s.TimestampMs%1000)*1_000_000).UTC().Format("2006-01-02")
@@ -262,12 +273,12 @@ func (d *DefaultMetricStorage) insertUpdatedDate(tsid int64, timeSeries TimeSeri
 		*args = append(*args, tsid)
 		*args = append(*args, d)
 	}
-	_, err := d.db.Exec(sb.String(), *args...)
+	_, err := d.db.ExecContext(ctx, sb.String(), *args...)
 	return err
 }
 
 // INSERT INTO flash_metrics_data (tsid, ts, v) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?);
-func (d *DefaultMetricStorage) insertData(tsid int64, timeSeries TimeSeries) error {
+func (d *DefaultMetricStorage) insertData(ctx context.Context, tsid int64, timeSeries TimeSeries) error {
 	var sb strings.Builder
 	sb.WriteString("INSERT INTO flash_metrics_data (tsid, ts, v) VALUES (?, ?, ?)")
 	for i := 0; i < len(timeSeries.Samples)-1; i++ {
@@ -283,6 +294,6 @@ func (d *DefaultMetricStorage) insertData(tsid int64, timeSeries TimeSeries) err
 		*args = append(*args, sample.Value)
 	}
 
-	_, err := d.db.Exec(sb.String(), *args...)
+	_, err := d.db.ExecContext(ctx, sb.String(), *args...)
 	return err
 }

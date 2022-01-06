@@ -1,6 +1,7 @@
 package metas
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -30,12 +31,12 @@ func NewDefaultMetaStorage(db *sql.DB) *DefaultMetaStorage {
 
 var _ MetaStorage = &DefaultMetaStorage{}
 
-func (d *DefaultMetaStorage) QueryMeta(metricName string) (*Meta, error) {
+func (d *DefaultMetaStorage) QueryMeta(ctx context.Context, metricName string) (*Meta, error) {
 	if r := d.getMetaFromCache(metricName); r != nil {
 		return r, nil
 	}
 
-	rows, err := d.db.Query("SELECT label_name, label_id FROM flash_metrics_meta WHERE metric_name = ?", metricName)
+	rows, err := d.db.QueryContext(ctx, "SELECT label_name, label_id FROM flash_metrics_meta WHERE metric_name = ?", metricName)
 	if err != nil {
 		return nil, err
 	}
@@ -63,8 +64,8 @@ type LabelPair struct {
 	ID   LabelID
 }
 
-func (d *DefaultMetaStorage) StoreMeta(metricName string, labelNames []string) (*Meta, error) {
-	r, err := d.QueryMeta(metricName)
+func (d *DefaultMetaStorage) StoreMeta(ctx context.Context, metricName string, labelNames []string) (*Meta, error) {
+	r, err := d.QueryMeta(ctx, metricName)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +107,7 @@ func (d *DefaultMetaStorage) StoreMeta(metricName string, labelNames []string) (
 		}
 		sb.WriteByte(';')
 
-		_, err = d.db.Exec(sb.String(), *args...)
+		_, err = d.db.ExecContext(ctx, sb.String(), *args...)
 		if err != nil {
 			return nil, err
 		}

@@ -2,6 +2,7 @@ package remote_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"net/http"
 	"sort"
@@ -45,7 +46,7 @@ func (s *testRemoteReadSuite) TestBasic() {
 	now := time.Now().UnixNano() / int64(time.Millisecond)
 
 	metricStorage := store.NewDefaultMetricStorage(s.db)
-	err := metricStorage.Store(store.TimeSeries{
+	err := metricStorage.Store(context.Background(), store.TimeSeries{
 		Name: "api_http_requests_total",
 		Labels: []store.Label{{
 			Name:  "method",
@@ -64,7 +65,7 @@ func (s *testRemoteReadSuite) TestBasic() {
 	})
 	s.NoError(err)
 
-	err = metricStorage.Store(store.TimeSeries{
+	err = metricStorage.Store(context.Background(), store.TimeSeries{
 		Name: "api_http_requests_total",
 		Labels: []store.Label{{
 			Name:  "method",
