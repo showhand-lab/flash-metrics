@@ -57,18 +57,18 @@ func overrideConfig(config *config.FlashMetricsConfig) {
 	})
 }
 
-func initLogger(cfg *config.FlashMetricsConfig) {
-	logCfg := &log.Config{Level: cfg.LogConfig.LogLevel}
-
-	if cfg.LogConfig.LogFile != "" {
-		logCfg.File.Filename = cfg.LogConfig.LogFile
+func initLogger(cfg *config.FlashMetricsConfig) error {
+	logCfg := &log.Config{
+		Level: cfg.LogConfig.LogLevel,
+		File:  log.FileLogConfig{Filename: cfg.LogConfig.LogFile},
 	}
 
 	logger, p, err := log.InitLogger(logCfg)
 	if err != nil {
-		stdlog.Fatalf("failed to init logger, err: %s", err)
+		return err
 	}
 	log.ReplaceGlobals(logger, p)
+	return nil
 }
 
 func initDatabase(cfg *config.FlashMetricsConfig) *sql.DB {
@@ -138,11 +138,17 @@ func waitForSigterm() os.Signal {
 
 func main() {
 	flag.Parse()
+
 	flashMetricsConfig, err := config.LoadConfig(*cfgFilePath, overrideConfig)
 	if err != nil {
-		log.Fatal("fail to load config file ", zap.String("config.file", *cfgFilePath))
+		// logger isn't initialized, need to use stdlog
+		stdlog.Fatalf("failed to load config file, config.file: %s", *cfgFilePath)
 	}
-	initLogger(flashMetricsConfig)
+	err = initLogger(flashMetricsConfig)
+	if err != nil {
+		// failed to initialize logger, need to use stdlog
+		stdlog.Fatalf("failed to init logger, err: %s", err.Error())
+	}
 
 	printer.PrintFlashMetricsStorageInfo()
 
