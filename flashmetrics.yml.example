@@ -6,7 +6,7 @@ web:
   address: 0.0.0.0:9977
 
 logs:
-  log_level: info
+  log_level: debug
   log_file: flashmetrics.log
 
 scrape_configs:
