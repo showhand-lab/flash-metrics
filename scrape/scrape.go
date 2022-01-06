@@ -16,45 +16,53 @@ import (
 	"go.uber.org/zap"
 )
 
-type scrapeEvent struct {
-	httpClient   *http.Client
-	scrapeConfig *config.ScrapeConfig
-}
+var (
+	wg           sync.WaitGroup
+	cancelScrape context.CancelFunc
+)
 
-func newScrapeEvent(cfg *config.ScrapeConfig) *scrapeEvent {
-	return &scrapeEvent{
-		httpClient:   &http.Client{Timeout: cfg.ScrapeTimeout},
-		scrapeConfig: cfg,
+func Init(flashMetricsConfig *config.FlashMetricsConfig, metricStore store.MetricStorage) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelScrape = cancel
+	for _, scrapeConfig := range flashMetricsConfig.ScrapeConfigs {
+		wg.Add(1)
+		go func(scrapeConfig *config.ScrapeConfig) {
+			defer wg.Done()
+			scrapeLoop(ctx, scrapeConfig, metricStore)
+		}(scrapeConfig)
 	}
 }
 
-var jobsEventChan = make(chan *scrapeEvent)
+func Stop() {
+	cancelScrape()
+	wg.Wait()
+}
 
-func scrapeJob(ctx context.Context, scrapeConfig *config.ScrapeConfig) {
+func scrapeLoop(ctx context.Context, scrapeConfig *config.ScrapeConfig, metricStore store.MetricStorage) {
 	ticker := time.NewTicker(scrapeConfig.ScrapeInterval)
-	relatedScrapeEvent := newScrapeEvent(scrapeConfig)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			jobsEventChan <- relatedScrapeEvent
+			for _, staticConfig := range scrapeConfig.StaticConfigs {
+				for _, target := range staticConfig.Targets {
+					wg.Add(1)
+					go func(target string) {
+						ctx, cancel := context.WithTimeout(ctx, scrapeConfig.ScrapeTimeout)
+						defer func() {
+							cancel()
+							wg.Done()
+						}()
+						scrapeTarget(
+							ctx,
+							&http.Client{Timeout: scrapeConfig.ScrapeTimeout},
+							fmt.Sprintf("%s://%s%s", scrapeConfig.Scheme, target, scrapeConfig.MetricsPath),
+							metricStore,
+						)
+					}(target)
+				}
+			}
 		case <-ctx.Done():
-			ticker.Stop()
-			return
-		}
-	}
-}
-
-func Init(flashMetricsConfig *config.FlashMetricsConfig, ctx context.Context, metricStore store.MetricStorage) {
-	for _, scrapeConfig := range flashMetricsConfig.ScrapeConfigs {
-		go scrapeJob(ctx, scrapeConfig)
-	}
-
-	for {
-		select {
-		case event := <-jobsEventChan:
-			go scrape(metricStore, event)
-		case <-ctx.Done():
-			close(jobsEventChan)
 			return
 		}
 	}
@@ -63,11 +71,16 @@ func Init(flashMetricsConfig *config.FlashMetricsConfig, ctx context.Context, me
 // TODO: add test cases
 // TODO: refactor duplicated snippets
 // TODO: store metric type, not just time series
-func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string, metricStore store.MetricStorage) {
-	defer wg.Done()
-	resp, err := httpClient.Get(targetUrl)
+func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string, metricStore store.MetricStorage) {
+	req, err := http.NewRequestWithContext(ctx, "GET", targetUrl, nil)
 	if err != nil {
-		fmt.Println(err)
+		log.Warn("failed to create request", zap.Error(err))
+		return
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		log.Warn("failed to do request", zap.Error(err))
 		return
 	}
 	defer resp.Body.Close()
@@ -206,21 +219,4 @@ func scrapeTarget(wg *sync.WaitGroup, httpClient *http.Client, targetUrl string,
 			return
 		}
 	}
-}
-
-func scrape(metricStore store.MetricStorage, scrapeEvent *scrapeEvent) {
-	wg := sync.WaitGroup{}
-	scrapeConfig := scrapeEvent.scrapeConfig
-	for _, staticConfig := range scrapeConfig.StaticConfigs {
-		for _, target := range staticConfig.Targets {
-			wg.Add(1)
-			go scrapeTarget(
-				&wg,
-				scrapeEvent.httpClient,
-				fmt.Sprintf("%s://%s%s", scrapeConfig.Scheme, target, scrapeConfig.MetricsPath),
-				metricStore,
-			)
-		}
-	}
-	wg.Wait()
 }

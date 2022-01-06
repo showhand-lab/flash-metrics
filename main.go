@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -145,9 +144,8 @@ func main() {
 	service.Init(flashMetricsConfig, storage)
 	defer service.Stop()
 
-	scrapeCtx, cancelScrape := context.WithCancel(context.Background())
-	scrape.Init(flashMetricsConfig, scrapeCtx, storage)
-	defer cancelScrape()
+	scrape.Init(flashMetricsConfig, storage)
+	defer scrape.Stop()
 
 	sig := waitForSigterm()
 	log.Info("received signal", zap.String("sig", sig.String()))
