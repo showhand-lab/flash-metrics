@@ -5,3 +5,4 @@ tidb.config
 remote-write-data/
 remote-read-data/
 tools/bin/
+flashmetrics.log

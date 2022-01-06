@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/showhand-lab/flash-metrics-storage/config"
+	"github.com/showhand-lab/flash-metrics-storage/scrape"
 	"github.com/showhand-lab/flash-metrics-storage/service"
 	"github.com/showhand-lab/flash-metrics-storage/store"
 	"github.com/showhand-lab/flash-metrics-storage/table"
@@ -22,43 +24,60 @@ import (
 )
 
 const (
-	nmAddr     = "address"
-	nmTiDBAddr = "tidb.address"
-	nmLogLevel = "log.level"
-	nmLogFile  = "log.file"
-	nmCleanup  = "cleanup"
+	nmConfigFilePath = "config.file"
+	nmAddr           = "address"
+	nmTiDBAddr       = "tidb.address"
+	nmLogLevel       = "log.level"
+	nmLogFile        = "log.file"
+	nmCleanup        = "cleanup"
 )
 
 var (
-	tidbAddr   = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
-	listenAddr = flag.String(nmAddr, "127.0.0.1:9977", "TCP address to listen for http connections")
-	logLevel   = flag.String(nmLogLevel, "info", "Log level")
-	logPath    = flag.String(nmLogFile, "", "Log file")
-	cleanup    = flag.Bool(nmCleanup, false, "Whether to cleanup data during shutting down, set for debug")
+	cfgFilePath = flag.String(nmConfigFilePath, "", "YAML config file path for flashmetrics.")
+	cleanup     = flag.Bool(nmCleanup, false, "Whether to cleanup data during shutting down, set for debug")
+	tidbAddr    = flag.String(nmTiDBAddr, config.DefaultFlashMetricsConfig.TiDBConfig.Address, "The address of TiDB")
+	listenAddr  = flag.String(nmAddr, config.DefaultFlashMetricsConfig.WebConfig.Address, "TCP address to listen for http connections")
+	logLevel    = flag.String(nmLogLevel, config.DefaultFlashMetricsConfig.LogConfig.LogLevel, "Log level")
+	logFile     = flag.String(nmLogFile, config.DefaultFlashMetricsConfig.LogConfig.LogFile, "Log file")
 )
 
-func initLogger() {
-	cfg := &log.Config{Level: *logLevel}
-
-	if *logPath != "" {
-		cfg.File.Filename = *logPath
-	}
-
-	logger, p, err := log.InitLogger(cfg)
-	if err != nil {
-		stdlog.Fatalf("failed to init logger, err: %s", err)
-	}
-	log.ReplaceGlobals(logger, p)
+func overrideConfig(config *config.FlashMetricsConfig) {
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case nmAddr:
+			config.WebConfig.Address = *listenAddr
+		case nmTiDBAddr:
+			config.TiDBConfig.Address = *tidbAddr
+		case nmLogFile:
+			config.LogConfig.LogFile = *logFile
+		case nmLogLevel:
+			config.LogConfig.LogLevel = *logLevel
+		}
+	})
 }
 
-func initDatabase() *sql.DB {
+func initLogger(cfg *config.FlashMetricsConfig) error {
+	logCfg := &log.Config{
+		Level: cfg.LogConfig.LogLevel,
+		File:  log.FileLogConfig{Filename: cfg.LogConfig.LogFile},
+	}
+
+	logger, p, err := log.InitLogger(logCfg)
+	if err != nil {
+		return err
+	}
+	log.ReplaceGlobals(logger, p)
+	return nil
+}
+
+func initDatabase(cfg *config.FlashMetricsConfig) *sql.DB {
 	now := time.Now()
 	log.Info("setting up database")
 	defer func() {
 		log.Info("init database done", zap.Duration("in", time.Since(now)))
 	}()
 
-	db, err := sql.Open("mysql", fmt.Sprintf("root@(%s)/test", *tidbAddr))
+	db, err := sql.Open("mysql", fmt.Sprintf("root@(%s)/test", cfg.TiDBConfig.Address))
 	if err != nil {
 		log.Fatal("failed to open db", zap.Error(err))
 	}
@@ -118,19 +137,34 @@ func waitForSigterm() os.Signal {
 
 func main() {
 	flag.Parse()
-	initLogger()
 
-	printer.PrintFlashMetricsStorageInfo()
-	if len(*listenAddr) == 0 {
-		log.Fatal("empty listen address", zap.String("listen-address", *listenAddr))
+	flashMetricsConfig, err := config.LoadConfig(*cfgFilePath, overrideConfig)
+	if err != nil {
+		// logger isn't initialized, need to use stdlog
+		stdlog.Fatalf("failed to load config file, config.file: %s", *cfgFilePath)
+	}
+	err = initLogger(flashMetricsConfig)
+	if err != nil {
+		// failed to initialize logger, need to use stdlog
+		stdlog.Fatalf("failed to init logger, err: %s", err.Error())
 	}
 
-	db := initDatabase()
+	printer.PrintFlashMetricsInfo()
+
+	if len(flashMetricsConfig.WebConfig.Address) == 0 {
+		log.Fatal("empty listen address", zap.String("listen-address", flashMetricsConfig.WebConfig.Address))
+	}
+
+	db := initDatabase(flashMetricsConfig)
 	defer closeDatabase(db)
 
 	storage := store.NewDefaultMetricStorage(db)
-	service.Init(*listenAddr, storage)
+
+	service.Init(flashMetricsConfig, storage)
 	defer service.Stop()
+
+	scrape.Init(flashMetricsConfig, storage)
+	defer scrape.Stop()
 
 	sig := waitForSigterm()
 	log.Info("received signal", zap.String("sig", sig.String()))
