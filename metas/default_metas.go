@@ -92,6 +92,18 @@ func (d *DefaultMetaStorage) StoreMeta(ctx context.Context, metricName string, l
 	}
 
 	if newLabelLen > 0 {
+		newMeta := &Meta{
+			MetricName: r.MetricName,
+			Labels:     map[LabelName]LabelID{},
+		}
+		for n, id := range r.Labels {
+			newMeta.Labels[n] = id
+		}
+		for _, newLabel := range *labels {
+			newMeta.Labels[newLabel.Name] = newLabel.ID
+		}
+		r = newMeta
+
 		args := argSliceP.Get()
 		defer argSliceP.Put(args)
 		for _, newLabel := range *labels {
@@ -111,13 +123,9 @@ func (d *DefaultMetaStorage) StoreMeta(ctx context.Context, metricName string, l
 		if err != nil {
 			return nil, err
 		}
-
-		for _, newLabel := range *labels {
-			r.Labels[newLabel.Name] = newLabel.ID
-		}
 	}
-	d.updateCache(metricName, r)
 
+	d.updateCache(metricName, r)
 	return r, nil
 }
 

@@ -76,7 +76,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	})
 	s.NoError(err)
 
-	err = metricStorage.BatchStore(context.Background(), []store.TimeSeries{{
+	err = metricStorage.BatchStore(context.Background(), []*store.TimeSeries{{
 		Name: "api_http_requests_total",
 		Labels: []store.Label{{
 			Name:  "scheme",
