@@ -49,15 +49,17 @@ func Init(flashMetricsConfig *config.FlashMetricsConfig, ctx context.Context, me
 		go scrapeJob(ctx, scrapeConfig)
 	}
 
-	for {
-		select {
-		case event := <-jobsEventChan:
-			go scrape(metricStore, event)
-		case <-ctx.Done():
-			close(jobsEventChan)
-			return
+	go func() {
+		for {
+			select {
+			case event := <-jobsEventChan:
+				go scrape(metricStore, event)
+			case <-ctx.Done():
+				close(jobsEventChan)
+				return
+			}
 		}
-	}
+	}()
 }
 
 // TODO: add test cases
