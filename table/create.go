@@ -28,10 +28,7 @@ CREATE TABLE IF NOT EXISTS flash_metrics_index (
     label12 CHAR(128),
     label13 CHAR(128),
     label14 CHAR(128),
-    PRIMARY KEY (metric_name, label0, label1,
-      label2, label3, label4, label5, label6,
-      label7, label8, label9, label10, label11,
-      label12, label13, label14)
+    PRIMARY KEY (metric_name, label0)
 );
 `
 

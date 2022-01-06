@@ -1,14 +1,20 @@
 package http
 
 import (
+	"fmt"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pingcap/log"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/stats"
+	"github.com/showhand-lab/flash-metrics-storage/parser"
 	"go.uber.org/zap"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
 )
 
 type queryData struct {
@@ -23,6 +29,33 @@ type response struct {
 	ErrorType string      `json:"errorType,omitempty"`
 	Error     string      `json:"error,omitempty"`
 	Warnings  []string    `json:"warnings,omitempty"`
+}
+
+
+func parseTime(s string) (time.Time, error) {
+	if t, err := strconv.ParseFloat(s, 64); err == nil {
+		s, ns := math.Modf(t)
+		ns = math.Round(ns*1000) / 1000
+		return time.Unix(int64(s), int64(ns*float64(time.Second))), nil
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q to a valid timestamp", s)
+}
+
+func parseDuration(s string) (time.Duration, error) {
+	if d, err := strconv.ParseFloat(s, 64); err == nil {
+		ts := d * float64(time.Second)
+		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
+			return 0, fmt.Errorf("cannot parse %q to a valid duration. It overflows int64", s)
+		}
+		return time.Duration(ts), nil
+	}
+	if d, err := model.ParseDuration(s); err == nil {
+		return time.Duration(d), nil
+	}
+	return 0, fmt.Errorf("cannot parse %q to a valid duration", s)
 }
 
 func QueryHandler(w http.ResponseWriter, r *http.Request) {
@@ -44,13 +77,12 @@ func QueryHandler(w http.ResponseWriter, r *http.Request) {
 		log.Debug("", zap.String("key", key), zap.Strings("value", value))
 	}
 
-	//scalar := promql.Scalar{T: 1, V: 1.0}
-	//data := queryData{
-	//	"scalar",
-	//	scalar,
-	//	nil,
-	//}
-	//respond(w, data)
+	time, err := parseTime(values["time"][0])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+
+	_ = parser.NewQuery(values["query"][0], time)
 }
 
 func QueryRangeHandler(w http.ResponseWriter, r *http.Request) {
@@ -72,13 +104,24 @@ func QueryRangeHandler(w http.ResponseWriter, r *http.Request) {
 		log.Debug("", zap.String("key", key), zap.Strings("value", value))
 	}
 
-	scalar := promql.Scalar{T: 1, V: 1.0}
-	data := queryData{
-		"scalar",
-		scalar,
-		nil,
+	start, err := parseTime(values["start"][0])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
-	respond(w, data)
+	end, err := parseTime(values["end"][0])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+	step, err := parseDuration(values["step"][0])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+
+	_ = parser.NewRangeQuery(values["query"][0], start, end, step)
+
+	// db.execute(sql)
+
+
 }
 
 func DefaultHandler(w http.ResponseWriter, r *http.Request) {
