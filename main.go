@@ -25,35 +25,49 @@ import (
 
 const (
 	nmConfigFilePath = "config.file"
-	//nmAddr           = "address"
-	//nmTiDBAddr       = "tidb.address"
-	//nmLogLevel       = "log.level"
-	//nmLogFile        = "log.file"
-	nmCleanup = "cleanup"
+	nmAddr           = "address"
+	nmTiDBAddr       = "tidb.address"
+	nmLogLevel       = "log.level"
+	nmLogFile        = "log.file"
+	nmCleanup        = "cleanup"
 )
 
 var (
-	cfgFilePath = flag.String(nmConfigFilePath, "./flashmetrics.yml", "YAML config file path for flashmetrics.")
+	cfgFilePath = flag.String(nmConfigFilePath, "", "YAML config file path for flashmetrics.")
 	cleanup     = flag.Bool(nmCleanup, false, "Whether to cleanup data during shutting down, set for debug")
-	// TODO: override config file values with flag arguments.
-	//tidbAddr    = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
-	//listenAddr  = flag.String(nmAddr, "127.0.0.1:9977", "TCP address to listen for http connections")
-	//logLevel    = flag.String(nmLogLevel, "info", "Log level")
-	//logPath     = flag.String(nmLogFile, "", "Log file")
+	tidbAddr    = flag.String(nmTiDBAddr, config.DefaultFlashMetricsConfig.TiDBConfig.Address, "The address of TiDB")
+	listenAddr  = flag.String(nmAddr, config.DefaultFlashMetricsConfig.WebConfig.Address, "TCP address to listen for http connections")
+	logLevel    = flag.String(nmLogLevel, config.DefaultFlashMetricsConfig.LogConfig.LogLevel, "Log level")
+	logFile     = flag.String(nmLogFile, config.DefaultFlashMetricsConfig.LogConfig.LogFile, "Log file")
 )
 
-func initLogger(cfg *config.FlashMetricsConfig) {
-	logCfg := &log.Config{Level: cfg.LogConfig.LogLevel}
+func overrideConfig(config *config.FlashMetricsConfig) {
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case nmAddr:
+			config.WebConfig.Address = *listenAddr
+		case nmTiDBAddr:
+			config.TiDBConfig.Address = *tidbAddr
+		case nmLogFile:
+			config.LogConfig.LogFile = *logFile
+		case nmLogLevel:
+			config.LogConfig.LogLevel = *logLevel
+		}
+	})
+}
 
-	if cfg.LogConfig.LogFile != "" {
-		logCfg.File.Filename = cfg.LogConfig.LogFile
+func initLogger(cfg *config.FlashMetricsConfig) error {
+	logCfg := &log.Config{
+		Level: cfg.LogConfig.LogLevel,
+		File:  log.FileLogConfig{Filename: cfg.LogConfig.LogFile},
 	}
 
 	logger, p, err := log.InitLogger(logCfg)
 	if err != nil {
-		stdlog.Fatalf("failed to init logger, err: %s", err)
+		return err
 	}
 	log.ReplaceGlobals(logger, p)
+	return nil
 }
 
 func initDatabase(cfg *config.FlashMetricsConfig) *sql.DB {
@@ -123,14 +137,19 @@ func waitForSigterm() os.Signal {
 
 func main() {
 	flag.Parse()
-	// TODO: override config file values with flag arguments.
-	flashMetricsConfig, err := config.LoadConfig(*cfgFilePath)
-	if err != nil {
-		log.Fatal("fail to load config file ", zap.String("config.file", *cfgFilePath))
-	}
-	initLogger(flashMetricsConfig)
 
-	printer.PrintFlashMetricsStorageInfo()
+	flashMetricsConfig, err := config.LoadConfig(*cfgFilePath, overrideConfig)
+	if err != nil {
+		// logger isn't initialized, need to use stdlog
+		stdlog.Fatalf("failed to load config file, config.file: %s", *cfgFilePath)
+	}
+	err = initLogger(flashMetricsConfig)
+	if err != nil {
+		// failed to initialize logger, need to use stdlog
+		stdlog.Fatalf("failed to init logger, err: %s", err.Error())
+	}
+
+	printer.PrintFlashMetricsInfo()
 
 	if len(flashMetricsConfig.WebConfig.Address) == 0 {
 		log.Fatal("empty listen address", zap.String("listen-address", flashMetricsConfig.WebConfig.Address))
