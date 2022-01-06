@@ -61,15 +61,15 @@ func (d *DefaultMetricStorage) Store(ctx context.Context, timeSeries TimeSeries)
 	return d.insertData(ctx, tsid, timeSeries)
 }
 
-//func (d *DefaultMetricStorage) BatchStore(ctx context.Context, timeSeries []TimeSeries) error {
-//	for _, ts := range timeSeries {
-//		if err := d.Store(ctx, ts); err != nil {
-//			return err
-//		}
-//	}
-//
-//	return nil
-//}
+func (d *DefaultMetricStorage) BatchStore(ctx context.Context, timeSeries []TimeSeries) error {
+	for _, ts := range timeSeries {
+		if err := d.Store(ctx, ts); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
 
 // Query implements interface MetricStorage
 //
@@ -186,10 +186,14 @@ WHERE
 
 			i := 1
 			for _, name := range names {
-				timeSeries.Labels = append(timeSeries.Labels, Label{
-					Name:  name,
-					Value: string((*dest)[i].([]byte)),
-				})
+				labelValue := string((*dest)[i].([]byte))
+				if labelValue != "" {
+					timeSeries.Labels = append(timeSeries.Labels, Label{
+						Name:  name,
+						Value: labelValue,
+					})
+				}
+
 				i += 1
 			}
 		}
