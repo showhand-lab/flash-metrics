@@ -34,12 +34,12 @@ const (
 )
 
 var (
-	cfgFilePath = flag.String(nmConfigFilePath, "./flashmetrics.yml", "YAML config file path for flashmetrics.")
+	cfgFilePath = flag.String(nmConfigFilePath, "", "YAML config file path for flashmetrics.")
 	cleanup     = flag.Bool(nmCleanup, false, "Whether to cleanup data during shutting down, set for debug")
-	tidbAddr    = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
-	listenAddr  = flag.String(nmAddr, "127.0.0.1:9977", "TCP address to listen for http connections")
-	logLevel    = flag.String(nmLogLevel, "info", "Log level")
-	logFile     = flag.String(nmLogFile, "", "Log file")
+	tidbAddr    = flag.String(nmTiDBAddr, config.DefaultFlashMetricsConfig.TiDBConfig.Address, "The address of TiDB")
+	listenAddr  = flag.String(nmAddr, config.DefaultFlashMetricsConfig.WebConfig.Address, "TCP address to listen for http connections")
+	logLevel    = flag.String(nmLogLevel, config.DefaultFlashMetricsConfig.LogConfig.LogLevel, "Log level")
+	logFile     = flag.String(nmLogFile, config.DefaultFlashMetricsConfig.LogConfig.LogFile, "Log file")
 )
 
 func overrideConfig(config *config.FlashMetricsConfig) {
@@ -150,7 +150,7 @@ func main() {
 		stdlog.Fatalf("failed to init logger, err: %s", err.Error())
 	}
 
-	printer.PrintFlashMetricsStorageInfo()
+	printer.PrintFlashMetricsInfo()
 
 	if len(flashMetricsConfig.WebConfig.Address) == 0 {
 		log.Fatal("empty listen address", zap.String("listen-address", flashMetricsConfig.WebConfig.Address))

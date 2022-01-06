@@ -42,27 +42,33 @@ type FlashMetricsConfig struct {
 
 var DefaultFlashMetricsConfig = FlashMetricsConfig{
 	TiDBConfig: TiDBConfig{
-		Address: "0.0.0.0:4000",
+		Address: "127.0.0.1:4000",
 	},
 	WebConfig: WebConfig{
-		Address: "0.0.0.0:1200",
+		Address: "127.0.0.1:9977",
+	},
+	LogConfig: LogConfig{
+		LogLevel: "info",
 	},
 }
 
 func LoadConfig(cfgFilePath string, override func(config *FlashMetricsConfig)) (*FlashMetricsConfig, error) {
 	cfg := DefaultFlashMetricsConfig
-	file, err := os.Open(cfgFilePath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
 
-	// Init new YAML decode
-	d := yaml.NewDecoder(file)
+	if cfgFilePath != "" {
+		file, err := os.Open(cfgFilePath)
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
 
-	// Start YAML decoding from file
-	if err := d.Decode(&cfg); err != nil {
-		return nil, err
+		// Init new YAML decode
+		d := yaml.NewDecoder(file)
+
+		// Start YAML decoding from file
+		if err = d.Decode(&cfg); err != nil {
+			return nil, err
+		}
 	}
 
 	override(&cfg)
