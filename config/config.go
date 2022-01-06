@@ -49,8 +49,8 @@ var DefaultFlashMetricsConfig = FlashMetricsConfig{
 	},
 }
 
-func LoadConfig(cfgFilePath string) (*FlashMetricsConfig, error) {
-	cfg := &DefaultFlashMetricsConfig
+func LoadConfig(cfgFilePath string, override func(config *FlashMetricsConfig)) (*FlashMetricsConfig, error) {
+	cfg := DefaultFlashMetricsConfig
 	file, err := os.Open(cfgFilePath)
 	if err != nil {
 		return nil, err
@@ -65,5 +65,6 @@ func LoadConfig(cfgFilePath string) (*FlashMetricsConfig, error) {
 		return nil, err
 	}
 
-	return cfg, nil
+	override(&cfg)
+	return &cfg, nil
 }

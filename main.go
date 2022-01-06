@@ -26,22 +26,36 @@ import (
 
 const (
 	nmConfigFilePath = "config.file"
-	//nmAddr           = "address"
-	//nmTiDBAddr       = "tidb.address"
-	//nmLogLevel       = "log.level"
-	//nmLogFile        = "log.file"
-	nmCleanup = "cleanup"
+	nmAddr           = "address"
+	nmTiDBAddr       = "tidb.address"
+	nmLogLevel       = "log.level"
+	nmLogFile        = "log.file"
+	nmCleanup        = "cleanup"
 )
 
 var (
 	cfgFilePath = flag.String(nmConfigFilePath, "./flashmetrics.yml", "YAML config file path for flashmetrics.")
 	cleanup     = flag.Bool(nmCleanup, false, "Whether to cleanup data during shutting down, set for debug")
-	// TODO: override config file values with flag arguments.
-	//tidbAddr    = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
-	//listenAddr  = flag.String(nmAddr, "127.0.0.1:9977", "TCP address to listen for http connections")
-	//logLevel    = flag.String(nmLogLevel, "info", "Log level")
-	//logPath     = flag.String(nmLogFile, "", "Log file")
+	tidbAddr    = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
+	listenAddr  = flag.String(nmAddr, "127.0.0.1:9977", "TCP address to listen for http connections")
+	logLevel    = flag.String(nmLogLevel, "info", "Log level")
+	logFile     = flag.String(nmLogFile, "", "Log file")
 )
+
+func overrideConfig(config *config.FlashMetricsConfig) {
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case nmAddr:
+			config.WebConfig.Address = *listenAddr
+		case nmTiDBAddr:
+			config.TiDBConfig.Address = *tidbAddr
+		case nmLogFile:
+			config.LogConfig.LogFile = *logFile
+		case nmLogLevel:
+			config.LogConfig.LogLevel = *logLevel
+		}
+	})
+}
 
 func initLogger(cfg *config.FlashMetricsConfig) {
 	logCfg := &log.Config{Level: cfg.LogConfig.LogLevel}
@@ -124,8 +138,7 @@ func waitForSigterm() os.Signal {
 
 func main() {
 	flag.Parse()
-	// TODO: override config file values with flag arguments.
-	flashMetricsConfig, err := config.LoadConfig(*cfgFilePath)
+	flashMetricsConfig, err := config.LoadConfig(*cfgFilePath, overrideConfig)
 	if err != nil {
 		log.Fatal("fail to load config file ", zap.String("config.file", *cfgFilePath))
 	}
