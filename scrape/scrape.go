@@ -68,122 +68,6 @@ func scrapeLoop(ctx context.Context, scrapeConfig *config.ScrapeConfig, metricSt
 	}
 }
 
-func MetricToTimeSeries(
-	metricName string,
-	metricType io_prometheus_client.MetricType,
-	metric *io_prometheus_client.Metric,
-	outerTimeSeries *[]store.TimeSeries) {
-
-	nowMs := time.Now().UnixNano() / int64(time.Millisecond)
-
-	labels := make([]store.Label, 0)
-	for _, l := range metric.GetLabel() {
-		labels = append(labels, store.Label{
-			Name:  *l.Name,
-			Value: *l.Value,
-		})
-	}
-	var value float64
-	switch metricType {
-	case io_prometheus_client.MetricType_COUNTER:
-		value = metric.Counter.GetValue()
-		*outerTimeSeries = append(*outerTimeSeries, store.TimeSeries{
-			Name:   metricName,
-			Labels: labels,
-			Samples: []store.Sample{{
-				TimestampMs: nowMs,
-				Value:       value,
-			}},
-		})
-	case io_prometheus_client.MetricType_GAUGE:
-		value = metric.Gauge.GetValue()
-		*outerTimeSeries = append(*outerTimeSeries, store.TimeSeries{
-			Name:   metricName,
-			Labels: labels,
-			Samples: []store.Sample{{
-				TimestampMs: nowMs,
-				Value:       value,
-			}},
-		})
-	case io_prometheus_client.MetricType_UNTYPED:
-		value = metric.Untyped.GetValue()
-		*outerTimeSeries = append(*outerTimeSeries, store.TimeSeries{
-			Name:   metricName,
-			Labels: labels,
-			Samples: []store.Sample{{
-				TimestampMs: nowMs,
-				Value:       value,
-			}},
-		})
-	case io_prometheus_client.MetricType_SUMMARY:
-		summary := metric.GetSummary()
-		for _, quantile := range summary.GetQuantile() {
-			quantileLabels := append(labels, store.Label{
-				Name:  "quantile",
-				Value: fmt.Sprintf("%v", quantile.GetQuantile()),
-			})
-			*outerTimeSeries = append(*outerTimeSeries, store.TimeSeries{
-				Name:   metricName,
-				Labels: quantileLabels,
-				Samples: []store.Sample{{
-					TimestampMs: nowMs,
-					Value:       quantile.GetValue(),
-				}},
-			})
-		}
-		*outerTimeSeries = append(*outerTimeSeries, store.TimeSeries{
-			Name:   metricName + "_sum",
-			Labels: labels,
-			Samples: []store.Sample{{
-				TimestampMs: nowMs,
-				Value:       *summary.SampleSum,
-			}},
-		})
-		*outerTimeSeries = append(*outerTimeSeries, store.TimeSeries{
-			Name:   metricName + "_count",
-			Labels: labels,
-			Samples: []store.Sample{{
-				TimestampMs: nowMs,
-				Value:       float64(*summary.SampleCount),
-			}},
-		})
-	case io_prometheus_client.MetricType_HISTOGRAM:
-		histogram := metric.GetHistogram()
-		for _, bucket := range histogram.GetBucket() {
-			histogramLabels := append(labels, store.Label{
-				Name:  "le",
-				Value: fmt.Sprintf("%v", bucket.GetUpperBound()),
-			})
-			*outerTimeSeries = append(*outerTimeSeries, store.TimeSeries{
-				Name:   metricName + "_bucket",
-				Labels: histogramLabels,
-				Samples: []store.Sample{{
-					TimestampMs: nowMs,
-					Value:       float64(*bucket.CumulativeCount),
-				}},
-			})
-		}
-		*outerTimeSeries = append(*outerTimeSeries, store.TimeSeries{
-			Name:   metricName + "_sum",
-			Labels: labels,
-			Samples: []store.Sample{{
-				TimestampMs: nowMs,
-				Value:       *histogram.SampleSum,
-			}},
-		})
-		*outerTimeSeries = append(*outerTimeSeries, store.TimeSeries{
-			Name:   metricName + "_count",
-			Labels: labels,
-			Samples: []store.Sample{{
-				TimestampMs: nowMs,
-				Value:       float64(*histogram.SampleCount),
-			}},
-		})
-	default:
-		log.Fatal("Unexpected metric type", zap.String("type", metricType.String()))
-	}
-}
-
 // TODO: add test cases
 // TODO: refactor duplicated snippets
 func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string, metricStore store.MetricStorage) {
@@ -208,10 +92,117 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 	}
 
 	timeSeries := make([]store.TimeSeries, 0)
+	nowMs := time.Now().UnixNano() / int64(time.Millisecond)
 	for name, metricFamily := range metricFamilyMap {
 		// TODO: support extra labels from scrape configs
 		for _, metric := range metricFamily.GetMetric() {
-			MetricToTimeSeries(name, metricFamily.GetType(), metric, &timeSeries)
+			labels := make([]store.Label, 0)
+			for _, l := range metric.GetLabel() {
+				labels = append(labels, store.Label{
+					Name:  *l.Name,
+					Value: *l.Value,
+				})
+			}
+			var value float64
+			metricType := metricFamily.GetType()
+			switch metricType {
+			case io_prometheus_client.MetricType_COUNTER:
+				value = metric.Counter.GetValue()
+				timeSeries = append(timeSeries, store.TimeSeries{
+					Name:   name,
+					Labels: labels,
+					Samples: []store.Sample{{
+						TimestampMs: nowMs,
+						Value:       value,
+					}},
+				})
+			case io_prometheus_client.MetricType_GAUGE:
+				value = metric.Gauge.GetValue()
+				timeSeries = append(timeSeries, store.TimeSeries{
+					Name:   name,
+					Labels: labels,
+					Samples: []store.Sample{{
+						TimestampMs: nowMs,
+						Value:       value,
+					}},
+				})
+			case io_prometheus_client.MetricType_UNTYPED:
+				value = metric.Untyped.GetValue()
+				timeSeries = append(timeSeries, store.TimeSeries{
+					Name:   name,
+					Labels: labels,
+					Samples: []store.Sample{{
+						TimestampMs: nowMs,
+						Value:       value,
+					}},
+				})
+			case io_prometheus_client.MetricType_SUMMARY:
+				summary := metric.GetSummary()
+				for _, quantile := range summary.GetQuantile() {
+					quantileLabels := append(labels, store.Label{
+						Name:  "quantile",
+						Value: fmt.Sprintf("%v", quantile.GetQuantile()),
+					})
+					timeSeries = append(timeSeries, store.TimeSeries{
+						Name:   name,
+						Labels: quantileLabels,
+						Samples: []store.Sample{{
+							TimestampMs: nowMs,
+							Value:       quantile.GetValue(),
+						}},
+					})
+				}
+				timeSeries = append(timeSeries, store.TimeSeries{
+					Name:   name + "_sum",
+					Labels: labels,
+					Samples: []store.Sample{{
+						TimestampMs: nowMs,
+						Value:       *summary.SampleSum,
+					}},
+				})
+				timeSeries = append(timeSeries, store.TimeSeries{
+					Name:   name + "_count",
+					Labels: labels,
+					Samples: []store.Sample{{
+						TimestampMs: nowMs,
+						Value:       float64(*summary.SampleCount),
+					}},
+				})
+			case io_prometheus_client.MetricType_HISTOGRAM:
+				histogram := metric.GetHistogram()
+				for _, bucket := range histogram.GetBucket() {
+					histogramLabels := append(labels, store.Label{
+						Name:  "le",
+						Value: fmt.Sprintf("%v", bucket.GetUpperBound()),
+					})
+					timeSeries = append(timeSeries, store.TimeSeries{
+						Name:   name + "_bucket",
+						Labels: histogramLabels,
+						Samples: []store.Sample{{
+							TimestampMs: nowMs,
+							Value:       float64(*bucket.CumulativeCount),
+						}},
+					})
+				}
+				timeSeries = append(timeSeries, store.TimeSeries{
+					Name:   name + "_sum",
+					Labels: labels,
+					Samples: []store.Sample{{
+						TimestampMs: nowMs,
+						Value:       *histogram.SampleSum,
+					}},
+				})
+				timeSeries = append(timeSeries, store.TimeSeries{
+					Name:   name + "_count",
+					Labels: labels,
+					Samples: []store.Sample{{
+						TimestampMs: nowMs,
+						Value:       float64(*histogram.SampleCount),
+					}},
+				})
+			default:
+				log.Fatal("Unexpected metric type", zap.String("type", metricType.String()))
+			}
 		}
 	}
 
