@@ -37,9 +37,9 @@ func TestDoQuery(t *testing.T) {
 	metricStorage := store.NewDefaultMetricStorage(db)
 
 	solver := &QPSSolver{
-		sumByName: []string{"type"},
-		metricsName: "tiflash_coprocessor_request_count",
-		LabelMatchers: nil,
+		groupByNames: []string{"type"},
+		metricName: "tiflash_coprocessor_request_count",
+		labelMatchers: nil,
 		args: []interface{}{15.0, 15.0, "101,105,99,107,103,104,100,98,102,106", 1641586050, 1641589650},
 	}
 
@@ -69,7 +69,7 @@ func TestDoQuery(t *testing.T) {
 	//}
 
 	db.Exec("use test")
-	if err = solver.DoQuery(metricStorage); err != nil {
+	if err = solver.ExecuteQuery(metricStorage); err != nil {
 		log.Error("",zap.Error(err))
 		t.Fail()
 	}

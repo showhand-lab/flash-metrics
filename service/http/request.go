@@ -18,13 +18,13 @@ import (
 	"time"
 )
 
-type queryData struct {
+type QueryData struct {
 	ResultType promql.ValueType  `json:"resultType"`
 	Result     promql.Value      `json:"result"`
 	Stats      *stats.QueryStats `json:"stats,omitempty"`
 }
 
-type response struct {
+type Response struct {
 	Status    string      `json:"status"`
 	Data      interface{} `json:"data,omitempty"`
 	ErrorType string      `json:"errorType,omitempty"`
@@ -80,10 +80,9 @@ func QueryHandler(storage store.MetricStorage) http.HandlerFunc {
 		}
 
 		scalar := promql.Scalar{T: 1, V: 1.0}
-		data := queryData{
-			"scalar",
-			scalar,
-			nil,
+		data := QueryData{
+			ResultType: "scalar",
+			Result:     scalar,
 		}
 		respond(w, data)
 	}
@@ -122,8 +121,17 @@ func QueryRangeHandler(storage store.MetricStorage) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 
-		_, err = parser.NewRangeQuery(storage, values["query"][0], start, end, step)
+		result, err := parser.NewRangeQuery(storage, values["query"][0], start, end, step)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 
+		if _, suc := result.(*promql.Matrix); suc {
+			respond(w, QueryData{
+				ResultType: promql.ValueTypeMatrix,
+				Result:     result,
+			})
+		}
 		// db.execute(sql)
 	}
 }
@@ -151,7 +159,7 @@ func DefaultHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func respond(w http.ResponseWriter, data interface{}) {
-	b, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(&response{
+	b, err := jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(&Response{
 		Status: "success",
 		Data:   data,
 	})

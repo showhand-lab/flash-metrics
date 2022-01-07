@@ -10,36 +10,37 @@ import (
 	"time"
 )
 
-func NewRangeQuery(storage store.MetricStorage, qry string, start, end time.Time, step time.Duration) (sql string, err error) {
+func NewRangeQuery(storage store.MetricStorage, qry string, start, end time.Time, step time.Duration) (result promql.Value, err error) {
 	log.Info("", zap.Any("qry",  qry))
 
 	expr, err := promql.ParseExpr(qry)
 	if err != nil {
 		log.Warn("parse promql failed", zap.Error(err))
-		return "", err
+		return nil, err
 	}
 
 	if solver := tryMatchQPSPattern(expr); solver != nil {
+		log.Debug("QPS Pattern attached!")
 		tsids, err := solver.GetTsIDs(storage.(*store.DefaultMetricStorage))
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
-		solver.args = append(solver.args, step/time.Second)
-		solver.args = append(solver.args, step/time.Second+0.0) // TODO: fix the bug, see TestDoQuery for more details.
+		solver.args = append(solver.args, float64(step/time.Second))
+		solver.args = append(solver.args, float64(step/time.Second)) // TODO: fix the bug, see TestDoQuery for more details.
 		solver.args = append(solver.args, tsids)
 		solver.args = append(solver.args, start.Unix())
 		solver.args = append(solver.args, end.Unix())
 
-		if err = solver.DoQuery(storage.(*store.DefaultMetricStorage)); err != nil {
-			return "", err
+		if err = solver.ExecuteQuery(storage.(*store.DefaultMetricStorage)); err != nil {
+			return nil, err
 		}
-		//storage.(*store.DefaultMetricStorage).DB.Query(qps_pattern, args)
-		return sql, nil
+
+		return solver.result, nil
 	}
 
 	log.Warn("no promql pattern matched!")
-	return "", nil
+	return nil, nil
 }
 
 func NewInstantQuery(storage store.MetricStorage, qry string, time time.Time) (sql string, err error) {

@@ -7,6 +7,7 @@ import (
 	"github.com/showhand-lab/flash-metrics-storage/metas"
 	"github.com/showhand-lab/flash-metrics-storage/store"
 	"go.uber.org/zap"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -18,15 +19,19 @@ from flash_metrics_data
 where tsid in (?)
 and ts >= ? and ts <= ?
 group by tsid, tsmod
+order by tsmod
 `
 
 type QPSSolver struct {
-	sumByName []string
-	metricsName string
-	LabelMatchers []*labels.Matcher
+	groupByNames []string
+	metricName string
+	labelMatchers []*labels.Matcher
 
 	// step, step, tsids, start, end
 	args []interface{}
+
+	result promql.Matrix
+	matrixIndexHelper map[int]int // key means tsid, value means index of result.
 }
 
 func tryMatchQPSPattern(expr promql.Expr) *QPSSolver {
@@ -44,14 +49,14 @@ func tryMatchQPSPattern(expr promql.Expr) *QPSSolver {
 	}
 
 	return &QPSSolver {
-		sumByName: agg.Grouping,
-		metricsName: matrix.Name,
-		LabelMatchers: matrix.LabelMatchers,
+		groupByNames: agg.Grouping,
+		metricName: matrix.Name,
+		labelMatchers: matrix.LabelMatchers,
 	}
 }
 
 func (solver *QPSSolver) GetTsIDs(storage *store.DefaultMetricStorage) (tsids_string string, err error) {
-	m, err := storage.QueryMeta(solver.metricsName)
+	m, err := storage.QueryMeta(solver.metricName)
 	if err != nil {
 		return
 	}
@@ -63,12 +68,26 @@ func (solver *QPSSolver) GetTsIDs(storage *store.DefaultMetricStorage) (tsids_st
 	sb.WriteString(
 `
 select _tidb_rowid
+`)
+	groupByCount := 0
+	for _, groupByName := range  solver.groupByNames {
+		labelID, ok := m.Labels[metas.LabelName(groupByName)]
+		if !ok {
+			log.Fatal("group by label not found!", zap.String("label", groupByName))
+			continue
+		}
+		groupByCount++
+		sb.WriteString(", label")
+		sb.WriteString(strconv.Itoa(int(labelID)))
+	}
+
+	sb.WriteString(`
 from flash_metrics_index
 where metric_name = ?
 `)
-	args = append(args, solver.metricsName)
+	args = append(args, solver.metricName)
 
-	for _, matcher := range solver.LabelMatchers {
+	for _, matcher := range solver.labelMatchers {
 		labelID, ok := m.Labels[metas.LabelName(matcher.Name)]
 		if !ok {
 			log.Error("label not found!", zap.String("label", matcher.Name))
@@ -96,19 +115,54 @@ where metric_name = ?
 	}
 	defer rows.Close()
 
+	solver.matrixIndexHelper = make(map[int]int)
+
 	var tsids []string
 	for rows.Next() {
-		var x int
-		if err = rows.Scan(&x); err != nil {
+		row := make([]interface{}, groupByCount+1, groupByCount+1)
+		for index := range row {
+			if index == 0 {
+				var i int
+				row[index] = &i
+			} else {
+				var s string
+				row[index] = &s
+			}
+		}
+		if err = rows.Scan(row...); err != nil {
 			return "", err
 		}
-		tsids = append(tsids, strconv.Itoa(x))
+
+		tsid := *row[0].(*int)
+		tsids = append(tsids, strconv.Itoa(tsid))
+
+		var lbs labels.Labels
+		for index, str := range row[1:] {
+			lbs = append(lbs, labels.Label{
+				Name: solver.groupByNames[index],
+				Value: *str.(*string)})
+		}
+		solver.updateResultLabel(tsid, lbs)
 	}
 
 	return strings.Join(tsids, ","), nil
 }
 
-func (solver *QPSSolver) DoQuery(storage *store.DefaultMetricStorage) error {
+func (solver *QPSSolver) updateResultLabel(tsid int, lbs labels.Labels) {
+	// naive for loop, because the labels count won't be large.
+	index := -1
+	for index = range solver.result {
+		if reflect.DeepEqual(solver.result[index].Metric, lbs) {
+			break
+		}
+	}
+	if index > len(solver.result) {
+		solver.result = append(solver.result, promql.Series{Metric: lbs})
+	}
+	solver.matrixIndexHelper[tsid] = index
+}
+
+func (solver *QPSSolver) ExecuteQuery(storage *store.DefaultMetricStorage) (err error) {
 	rows, err := storage.DB.Query(qpsPattern, solver.args...)
 	if err != nil {
 		return err
@@ -120,6 +174,14 @@ func (solver *QPSSolver) DoQuery(storage *store.DefaultMetricStorage) error {
 		var value float64
 		if err = rows.Scan(&tsid, &tsmod, &value); err != nil {
 			return err
+		}
+
+		// assert order by tsid.
+		series := &solver.result[solver.matrixIndexHelper[tsid]]
+		if series.Points != nil && series.Points[len(series.Points)-1].T == tsmod {
+			series.Points[len(series.Points)-1].V += value
+		} else {
+			series.Points = append(series.Points, promql.Point{T: tsmod, V: value})
 		}
 	}
 
