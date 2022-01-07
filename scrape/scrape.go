@@ -38,6 +38,20 @@ func Stop() {
 	wg.Wait()
 }
 
+func storeTimeSeries(_ context.Context, metricStore store.MetricStorage, timeSeries []store.TimeSeries) {
+	for _, tseries := range timeSeries {
+		// TODO: 使用 batch store
+		log.Debug("time series",
+			zap.String("name", tseries.Name),
+			zap.Int64("sample timestamp", tseries.Samples[0].TimestampMs),
+			zap.Float64("sample value", tseries.Samples[0].Value))
+		err := metricStore.Store(tseries)
+		if err != nil {
+			return
+		}
+	}
+}
+
 func scrapeLoop(ctx context.Context, scrapeConfig *config.ScrapeConfig, metricStore store.MetricStorage) {
 	ticker := time.NewTicker(scrapeConfig.ScrapeInterval)
 	defer ticker.Stop()
@@ -51,6 +65,9 @@ func scrapeLoop(ctx context.Context, scrapeConfig *config.ScrapeConfig, metricSt
 						{Name: "job", Value: scrapeConfig.JobName},
 						{Name: "instance", Value: targetInstance},
 					}
+					log.Info("start scraping",
+						zap.String("job", scrapeConfig.JobName),
+						zap.String("instance", targetInstance))
 					go func(targetInstance string, defaultLabels *[]store.Label) {
 						ctx, cancel := context.WithTimeout(ctx, scrapeConfig.ScrapeTimeout)
 						defer func() {
@@ -58,13 +75,19 @@ func scrapeLoop(ctx context.Context, scrapeConfig *config.ScrapeConfig, metricSt
 							wg.Done()
 						}()
 
-						scrapeTarget(
+						err, timeSeries := scrapeTarget(
 							ctx,
 							scrapeConfig,
-							&metricStore,
 							targetInstance,
 							defaultLabels,
 						)
+
+						if err != nil {
+							log.Error("fail to scrape", zap.Error(err))
+							return
+						}
+						storeTimeSeries(ctx, metricStore, timeSeries)
+
 					}(targetInstance, &defaultLabels)
 				}
 			}
@@ -79,9 +102,43 @@ func scrapeLoop(ctx context.Context, scrapeConfig *config.ScrapeConfig, metricSt
 func scrapeTarget(
 	ctx context.Context,
 	scrapeConfig *config.ScrapeConfig,
-	metricStore *store.MetricStorage,
 	targetInstance string,
-	defaultLabels *[]store.Label) {
+	defaultLabels *[]store.Label) (err error, timeSeries []store.TimeSeries) {
+
+	now := time.Now()
+	defer func() {
+		// Add default time series at the of scraping this target
+		// https://prometheus.io/docs/concepts/jobs_instances/#automatically-generated-labels-and-time-series
+		isInstanceHealthy := 1.0
+		scrapeFinishTime := time.Now()
+		scrapeFinishTimeMs := scrapeFinishTime.UnixNano() / int64(time.Millisecond)
+		scrapedSampleCount := len(timeSeries)
+
+		if err != nil {
+			isInstanceHealthy = 0
+		}
+		timeSeries = append(timeSeries, store.TimeSeries{
+			Name:   "up",
+			Labels: *defaultLabels,
+			Samples: []store.Sample{
+				{TimestampMs: scrapeFinishTimeMs, Value: isInstanceHealthy},
+			},
+		})
+		timeSeries = append(timeSeries, store.TimeSeries{
+			Name:   "scrape_duration_seconds",
+			Labels: *defaultLabels,
+			Samples: []store.Sample{
+				{TimestampMs: scrapeFinishTimeMs, Value: float64(scrapeFinishTime.Second() - now.Second())},
+			},
+		})
+		timeSeries = append(timeSeries, store.TimeSeries{
+			Name:   "scrape_samples_scraped",
+			Labels: *defaultLabels,
+			Samples: []store.Sample{
+				{TimestampMs: scrapeFinishTimeMs, Value: float64(scrapedSampleCount)},
+			},
+		})
+	}()
 
 	targetUrl := fmt.Sprintf("%s://%s%s", scrapeConfig.Scheme, targetInstance, scrapeConfig.MetricsPath)
 	httpClient := &http.Client{Timeout: scrapeConfig.ScrapeTimeout}
@@ -105,11 +162,9 @@ func scrapeTarget(
 		return
 	}
 
-	timeSeries := make([]store.TimeSeries, 0)
-	nowMs := time.Now().UnixNano() / int64(time.Millisecond)
+	nowMs := now.UnixNano() / int64(time.Millisecond)
 	for name, metricFamily := range metricFamilyMap {
 		// TODO: support extra labels from scrape configs
-		// TODO: support default labels (job name, instance name)
 		for _, metric := range metricFamily.GetMetric() {
 			labels := make([]store.Label, len(*defaultLabels))
 			copy(labels, *defaultLabels)
@@ -222,16 +277,5 @@ func scrapeTarget(
 			}
 		}
 	}
-
-	for _, tseries := range timeSeries {
-		// TODO: 使用 batch store
-		log.Debug("time series",
-			zap.String("name", tseries.Name),
-			zap.Int64("sample timestamp", tseries.Samples[0].TimestampMs),
-			zap.Float64("sample value", tseries.Samples[0].Value))
-		err := (*metricStore).Store(tseries)
-		if err != nil {
-			return
-		}
-	}
+	return
 }
