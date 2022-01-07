@@ -11,6 +11,7 @@ import (
 
 	"github.com/showhand-lab/flash-metrics-storage/remote"
 	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
 	"github.com/showhand-lab/flash-metrics-storage/utils"
 
 	"github.com/golang/snappy"
@@ -39,6 +40,7 @@ func (s *testRemoteWriteSuite) SetupSuite() {
 }
 
 func (s *testRemoteWriteSuite) TearDownSuite() {
+	s.storage.Close()
 	s.NoError(utils.TearDownDB("test_remote_write", s.db))
 }
 
@@ -99,16 +101,16 @@ func (s *testRemoteWriteSuite) TestBasic() {
 	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })
-	s.Equal(ts, []store.TimeSeries{{
+	s.Equal(ts, []model.TimeSeries{{
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "handler",
 			Value: "/messages",
 		}, {
 			Name:  "method",
 			Value: "GET",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       100.0,
 		}, {
@@ -117,14 +119,14 @@ func (s *testRemoteWriteSuite) TestBasic() {
 		}},
 	}, {
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "handler",
 			Value: "/messages",
 		}, {
 			Name:  "method",
 			Value: "POST",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       77.0,
 		}},

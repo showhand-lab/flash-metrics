@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
 
 	"github.com/golang/snappy"
 	"github.com/pingcap/log"
@@ -40,7 +41,7 @@ func ReadHandler(storage store.MetricStorage) http.HandlerFunc {
 	OUTER:
 		for _, query := range req.Queries {
 			var metricName string
-			var matcher []store.Matcher
+			var matcher []model.Matcher
 
 			for _, qMatcher := range query.Matchers {
 				if qMatcher.Name == "__name__" {
@@ -51,7 +52,7 @@ func ReadHandler(storage store.MetricStorage) http.HandlerFunc {
 						continue OUTER
 					}
 				} else {
-					matcher = append(matcher, store.Matcher{
+					matcher = append(matcher, model.Matcher{
 						LabelName:  qMatcher.Name,
 						LabelValue: qMatcher.Value,
 						IsRE:       qMatcher.Type == prompb.LabelMatcher_NRE || qMatcher.Type == prompb.LabelMatcher_RE,

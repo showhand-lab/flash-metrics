@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"math"
 	"strconv"
 	"strings"
@@ -10,49 +11,104 @@ import (
 	"time"
 
 	"github.com/showhand-lab/flash-metrics-storage/metas"
-	"github.com/showhand-lab/flash-metrics-storage/table"
+	"github.com/showhand-lab/flash-metrics-storage/store/batch"
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
 
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/pingcap/log"
-	"go.uber.org/zap"
 )
 
 const (
-	defaultBatchSize       = 500
-	defaultBatchSampleSize = 150
+	defaultBatchSize                = 500
+	defaultBatchSizeForInsertSample = 150
+
+	defaultFetchTSIDWorkers    = 4
+	defaultUpdateDateWorkers   = 4
+	defaultInsertSampleWorkers = 8
 )
 
 var (
-	interfaceSliceP  = InterfaceSlicePool{}
-	timeSeriesSliceP = TimeSeriesSlicePool{}
-	bufferP          = BufferPool{}
+	interfaceSliceP  = batch.InterfaceSlicePool{}
+	timeSeriesSliceP = batch.TimeSeriesSlicePool{}
+	timeSeriesP      = batch.TimeSeriesPool{}
 )
 
 type DefaultMetricStorage struct {
-	*metas.DefaultMetaStorage
+	metas.MetaStorage
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
 	db *sql.DB
+
+	batchTasks chan batch.Task
 }
 
 func NewDefaultMetricStorage(db *sql.DB) *DefaultMetricStorage {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &DefaultMetricStorage{
-		DefaultMetaStorage: metas.NewDefaultMetaStorage(db),
 
-		ctx:    ctx,
-		cancel: cancel,
-
-		db: db,
+	ms := &DefaultMetricStorage{
+		MetaStorage: metas.NewDefaultMetaStorage(db),
+		ctx:         ctx,
+		cancel:      cancel,
+		db:          db,
+		batchTasks:  make(chan batch.Task, 1024),
 	}
+
+	updateDateTasks := make(chan batch.Task, 1024)
+	insertSampleTasks := make(chan batch.Task, 1024)
+
+	for i := 0; i < defaultInsertSampleWorkers; i++ {
+		ms.wg.Add(1)
+		worker := batch.NewInsertSampleWorker(
+			ms.ctx,
+			ms.db,
+			ms.batchTasks,
+			insertSampleTasks,
+		)
+		go func() {
+			worker.Start()
+			ms.wg.Done()
+		}()
+	}
+
+	for i := 0; i < defaultUpdateDateWorkers; i++ {
+		ms.wg.Add(1)
+		worker := batch.NewUpdateDateWorker(
+			ms.ctx,
+			ms.db,
+			updateDateTasks,
+		)
+		go func() {
+			worker.Start()
+			ms.wg.Done()
+		}()
+	}
+
+	for i := 0; i < defaultFetchTSIDWorkers; i++ {
+		ms.wg.Add(1)
+		worker := batch.NewFetchTSIDWorker(
+			ms.ctx,
+			ms.MetaStorage,
+			ms.db,
+			ms.batchTasks,
+			updateDateTasks,
+			insertSampleTasks,
+			defaultBatchSize,
+			defaultBatchSizeForInsertSample,
+		)
+		go func() {
+			worker.Start()
+			ms.wg.Done()
+		}()
+	}
+
+	return ms
 }
 
 var _ MetricStorage = &DefaultMetricStorage{}
 
-func (d *DefaultMetricStorage) Store(ctx context.Context, timeSeries TimeSeries) error {
+func (d *DefaultMetricStorage) Store(ctx context.Context, timeSeries model.TimeSeries) error {
 	if len(timeSeries.Samples) == 0 {
 		return nil
 	}
@@ -87,263 +143,54 @@ func (d *DefaultMetricStorage) Store(ctx context.Context, timeSeries TimeSeries)
 	return d.insertData(ctx, tsid, timeSeries)
 }
 
-var c, _ = lru.New(4096)
+func (d *DefaultMetricStorage) BatchStore(ctx context.Context, timeSeries []*model.TimeSeries) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-func (d *DefaultMetricStorage) BatchStore(ctx context.Context, timeSeries []*TimeSeries) error {
-	return splitBatch(timeSeries, func(series []*TimeSeries) error {
-		if err := d.batchFillSortedLabelValues(ctx, series); err != nil {
-			return err
-		}
-		if err := d.batchFillTSID(ctx, series); err != nil {
-			return err
-		}
-		// TODO: pipeline
-		go func() {
-			_ = d.batchInsertUpdateDate(ctx, series)
-		}()
-		return d.batchInsertSample(ctx, series)
-	})
-}
-
-func splitBatch(timeSeries []*TimeSeries, accessBatches func([]*TimeSeries) error) error {
-	begin := 0
-	currentBatchSize := 0
-
-	for i, t := range timeSeries {
-		currentBatchSize += len(t.Samples)
-		if currentBatchSize >= defaultBatchSize {
-			if err := accessBatches(timeSeries[begin : i+1]); err != nil {
-				return err
-			}
-			begin = i + 1
-			currentBatchSize = 0
-		}
-	}
-
-	if currentBatchSize != 0 {
-		return accessBatches(timeSeries[begin:])
-	}
-	return nil
-}
-
-func (d *DefaultMetricStorage) batchFillSortedLabelValues(ctx context.Context, timeSeries []*TimeSeries) error {
-	for _, ts := range timeSeries {
-		labelName := make([]string, 0, len(ts.Labels))
-		for _, l := range ts.Labels {
-			labelName = append(labelName, l.Name)
-		}
-		meta, err := d.StoreMeta(ctx, ts.Name, labelName)
-		if err != nil {
-			return err
-		}
-
-		ts.sortedLabelValue = ts.sortedLabelValue[:0]
-		for i := 0; i < table.MaxLabelCount; i++ {
-			ts.sortedLabelValue = append(ts.sortedLabelValue, "")
-		}
-		for _, label := range ts.Labels {
-			ts.sortedLabelValue[meta.Labels[metas.LabelName(label.Name)]] = label.Value
-		}
-	}
-
-	return nil
-}
-
-func (d *DefaultMetricStorage) batchFillTSID(ctx context.Context, timeSeries []*TimeSeries) error {
-	now := time.Now()
+	tss := timeSeriesSliceP.Get()
 	defer func() {
-		log.Debug("batch fill tsids", zap.Duration("in", time.Since(now)), zap.Int("size", len(timeSeries)))
+		for _, ts := range *tss {
+			timeSeriesP.Put(ts)
+		}
+		timeSeriesSliceP.Put(tss)
 	}()
 
-	buffer := bufferP.Get()
-	defer bufferP.Put(buffer)
-
-	slowPathTs := timeSeriesSliceP.Get()
-	defer timeSeriesSliceP.Put(slowPathTs)
-
-	for _, ts := range timeSeries {
-		buffer.Reset()
-		ts.marshalSortedLabel(buffer)
-
-		// fast path
-		if v, ok := c.Get(buffer.String()); ok {
-			ts.tsid = v.(int64)
-			continue
-		}
-
-		*slowPathTs = append(*slowPathTs, ts)
+	for _, originalTS := range timeSeries {
+		ts := timeSeriesP.Get()
+		ts.TimeSeries = originalTS
+		*tss = append(*tss, ts)
 	}
 
-	if len(*slowPathTs) == 0 {
+	t := batch.Task{
+		WG:    &sync.WaitGroup{},
+		Ctx:   ctx,
+		ErrCh: make(chan error),
+		Data:  *tss,
+	}
+
+	t.WG.Add(1)
+	select {
+	case d.batchTasks <- t:
+	default:
+		log.Warn("fetch tsid workers are busy, drop task")
+		t.WG.Done()
+		return errors.New("fetch tsid workers are busy")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		t.WG.Wait()
+		close(done)
+	}()
+
+	select {
+	case err := <-t.ErrCh:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
 		return nil
 	}
-
-	args := interfaceSliceP.Get()
-	defer interfaceSliceP.Put(args)
-
-	var sb strings.Builder
-	sb.WriteString("INSERT IGNORE INTO flash_metrics_index VALUES ")
-	sb.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-	*args = append(*args, (*slowPathTs)[0].Name)
-	for _, lv := range (*slowPathTs)[0].sortedLabelValue {
-		*args = append(*args, lv)
-	}
-	for _, ts := range (*slowPathTs)[1:] {
-		sb.WriteString(", (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-		*args = append(*args, ts.Name)
-		for _, lv := range ts.sortedLabelValue {
-			*args = append(*args, lv)
-		}
-	}
-
-	if _, err := d.db.ExecContext(ctx, sb.String(), *args...); err != nil {
-		return err
-	}
-
-	sb.Reset()
-	sb.WriteString("SELECT _tidb_rowid FROM (\n")
-	sb.WriteString("SELECT 0 AS id, _tidb_rowid FROM flash_metrics_index WHERE metric_name = ? ")
-	*args = (*args)[:0]
-	*args = append(*args, (*slowPathTs)[0].Name)
-	for i, lv := range (*slowPathTs)[0].sortedLabelValue {
-		sb.WriteString("AND label")
-		sb.WriteString(strconv.Itoa(i))
-		sb.WriteString(" = ?\n")
-		*args = append(*args, lv)
-	}
-	for i := 1; i < len(*slowPathTs); i++ {
-		sb.WriteString("UNION ALL\n")
-		sb.WriteString("SELECT ")
-		sb.WriteString(strconv.Itoa(i))
-		sb.WriteString(" AS id, _tidb_rowid FROM flash_metrics_index WHERE metric_name = ? ")
-		*args = append(*args, (*slowPathTs)[i].Name)
-		for j, lv := range (*slowPathTs)[i].sortedLabelValue {
-			sb.WriteString("AND label")
-			sb.WriteString(strconv.Itoa(j))
-			sb.WriteString(" = ?\n")
-			*args = append(*args, lv)
-		}
-	}
-	sb.WriteString(") ORDER BY id")
-
-	rows, err := d.db.QueryContext(ctx, sb.String(), *args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for _, ts := range *slowPathTs {
-		rows.Next()
-		var tsid int64
-		if err = rows.Scan(&tsid); err != nil {
-			return err
-		}
-		ts.tsid = tsid
-
-		buffer.Reset()
-		ts.marshalSortedLabel(buffer)
-		c.Add(buffer.String(), tsid)
-	}
-
-	return nil
-}
-
-func (d *DefaultMetricStorage) batchInsertUpdateDate(ctx context.Context, timeSeries []*TimeSeries) error {
-	now := time.Now()
-	defer func() {
-		log.Debug("batch update date", zap.Duration("in", time.Since(now)), zap.Int("size", len(timeSeries)))
-	}()
-
-	args := interfaceSliceP.Get()
-	defer interfaceSliceP.Put(args)
-
-	writeCount := 0
-	var sb strings.Builder
-	sb.WriteString("INSERT IGNORE INTO flash_metrics_update (tsid, updated_date) VALUES")
-
-	dateMap := map[string]struct{}{}
-	for _, ts := range timeSeries {
-		for k := range dateMap {
-			delete(dateMap, k)
-		}
-
-		for _, sample := range ts.Samples {
-			date := time.Unix(sample.TimestampMs/1000, (sample.TimestampMs%1000)*1_000_000).UTC().Format("2006-01-02")
-			dateMap[date] = struct{}{}
-		}
-
-		for k := range dateMap {
-			if writeCount > 0 {
-				sb.WriteByte(',')
-			}
-			sb.WriteString(" (?, ?)")
-			*args = append(*args, ts.tsid, k)
-			writeCount += 1
-		}
-	}
-
-	if writeCount == 0 {
-		return nil
-	}
-
-	_, err := d.db.ExecContext(ctx, sb.String(), *args...)
-	return err
-}
-
-func (d *DefaultMetricStorage) batchInsertSample(ctx context.Context, timeSeries []*TimeSeries) (err error) {
-	now := time.Now()
-	defer func() {
-		log.Debug("batch insert sample", zap.Duration("in", time.Since(now)), zap.Int("size", len(timeSeries)))
-	}()
-
-	args := interfaceSliceP.Get()
-
-	writeCount := 0
-	var sb strings.Builder
-	sb.WriteString("INSERT INTO flash_metrics_data (tsid, ts, v) VALUES")
-
-	var wg sync.WaitGroup
-	for _, ts := range timeSeries {
-		for _, sample := range ts.Samples {
-			if math.IsNaN(sample.Value) {
-				continue
-			}
-			if writeCount != 0 {
-				sb.WriteByte(',')
-			}
-			sb.WriteString(" (?, ?, ?)")
-
-			*args = append(*args, ts.tsid)
-			*args = append(*args, time.Unix(sample.TimestampMs/1000, (sample.TimestampMs%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
-			*args = append(*args, sample.Value)
-			writeCount += 1
-
-			if writeCount >= defaultBatchSampleSize {
-				wg.Add(1)
-				go func(query string, args []interface{}) {
-					now := time.Now()
-					defer func() {
-						wg.Done()
-						log.Debug("batch insert sample", zap.Duration("in", time.Since(now)), zap.Int("size", len(args)))
-					}()
-					_, err = d.db.ExecContext(ctx, query, args...)
-				}(sb.String(), *args)
-
-				sb.Reset()
-				sb.WriteString("INSERT INTO flash_metrics_data (tsid, ts, v) VALUES")
-				writeCount = 0
-				args = interfaceSliceP.Get()
-			}
-		}
-	}
-
-	if writeCount > 0 {
-		_, err = d.db.ExecContext(ctx, sb.String(), *args...)
-	}
-
-	interfaceSliceP.Put(args)
-	wg.Wait()
-	return err
 }
 
 // Query implements interface MetricStorage
@@ -361,7 +208,7 @@ func (d *DefaultMetricStorage) batchInsertSample(ctx context.Context, timeSeries
 //    AND DATE(start_ts) <= updated_date AND updated_date <= DATE(end_ts)
 //    AND start_ts <= ts AND ts <= end_ts
 //  ORDER BY tsid, t;
-func (d *DefaultMetricStorage) Query(ctx context.Context, start, end int64, metricsName string, matchers []Matcher) ([]TimeSeries, error) {
+func (d *DefaultMetricStorage) Query(ctx context.Context, start, end int64, metricsName string, matchers []model.Matcher) ([]model.TimeSeries, error) {
 	m, err := d.QueryMeta(ctx, metricsName)
 	if err != nil {
 		return nil, err
@@ -444,9 +291,9 @@ WHERE
 		*destP = append(*destP, &(*dest)[i])
 	}
 
-	var res []TimeSeries
+	var res []model.TimeSeries
 	tsid := int64(0)
-	var timeSeries *TimeSeries
+	var timeSeries *model.TimeSeries
 	for rows.Next() {
 		if err = rows.Scan(*destP...); err != nil {
 			return nil, err
@@ -455,7 +302,7 @@ WHERE
 		curTSID := (*dest)[0].(int64)
 		if tsid != curTSID {
 			tsid = curTSID
-			res = append(res, TimeSeries{})
+			res = append(res, model.TimeSeries{})
 			timeSeries = &res[len(res)-1]
 			timeSeries.Name = metricsName
 
@@ -463,7 +310,7 @@ WHERE
 			for _, name := range names {
 				labelValue := string((*dest)[i].([]byte))
 				if labelValue != "" {
-					timeSeries.Labels = append(timeSeries.Labels, Label{
+					timeSeries.Labels = append(timeSeries.Labels, model.Label{
 						Name:  name,
 						Value: labelValue,
 					})
@@ -475,7 +322,7 @@ WHERE
 
 		ts := (*dest)[len(*dest)-2].(int64)
 		v := (*dest)[len(*dest)-1].(float64)
-		timeSeries.Samples = append(timeSeries.Samples, Sample{
+		timeSeries.Samples = append(timeSeries.Samples, model.Sample{
 			TimestampMs: ts,
 			Value:       v,
 		})
@@ -490,7 +337,7 @@ func (d *DefaultMetricStorage) Close() {
 }
 
 // INSERT IGNORE INTO flash_metrics_index (metric_name, label0, label1) VALUES (?, ?, ?);
-func (d *DefaultMetricStorage) insertIndex(ctx context.Context, timeSeries TimeSeries, m *metas.Meta) error {
+func (d *DefaultMetricStorage) insertIndex(ctx context.Context, timeSeries model.TimeSeries, m *metas.Meta) error {
 	args := interfaceSliceP.Get()
 	defer interfaceSliceP.Put(args)
 	var sb strings.Builder
@@ -513,7 +360,7 @@ func (d *DefaultMetricStorage) insertIndex(ctx context.Context, timeSeries TimeS
 }
 
 // SELECT _tidb_rowid FROM flash_metrics_index WHERE metric_name = ? AND label0 = ? AND label1 = ?;
-func (d *DefaultMetricStorage) getTSID(ctx context.Context, timeSeries TimeSeries, m *metas.Meta) (int64, error) {
+func (d *DefaultMetricStorage) getTSID(ctx context.Context, timeSeries model.TimeSeries, m *metas.Meta) (int64, error) {
 	args := interfaceSliceP.Get()
 	defer interfaceSliceP.Put(args)
 	var sb strings.Builder
@@ -537,7 +384,7 @@ func (d *DefaultMetricStorage) getTSID(ctx context.Context, timeSeries TimeSerie
 }
 
 // INSERT IGNORE INTO flash_metrics_update (tsid, updated_date) VALUES (?, ?), (?, ?), (?, ?);
-func (d *DefaultMetricStorage) insertUpdatedDate(ctx context.Context, tsid int64, timeSeries TimeSeries) error {
+func (d *DefaultMetricStorage) insertUpdatedDate(ctx context.Context, tsid int64, timeSeries model.TimeSeries) error {
 	args := interfaceSliceP.Get()
 	defer interfaceSliceP.Put(args)
 
@@ -573,7 +420,7 @@ func (d *DefaultMetricStorage) insertUpdatedDate(ctx context.Context, tsid int64
 }
 
 // INSERT INTO flash_metrics_data (tsid, ts, v) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?);
-func (d *DefaultMetricStorage) insertData(ctx context.Context, tsid int64, timeSeries TimeSeries) error {
+func (d *DefaultMetricStorage) insertData(ctx context.Context, tsid int64, timeSeries model.TimeSeries) error {
 	args := interfaceSliceP.Get()
 	defer interfaceSliceP.Put(args)
 

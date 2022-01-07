@@ -1,44 +1,26 @@
 package store
 
 import (
-	"bytes"
 	"sync"
+
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
 )
-
-type InterfaceSlicePool struct {
-	p sync.Pool
-}
-
-func (isp *InterfaceSlicePool) Get() *[]interface{} {
-	isv := isp.p.Get()
-	if isv == nil {
-		return &[]interface{}{}
-	}
-	return isv.(*[]interface{})
-}
-
-func (isp *InterfaceSlicePool) Put(isv *[]interface{}) {
-	*isv = (*isv)[:0]
-	isp.p.Put(isv)
-}
 
 type TimeSeriesPool struct {
 	p sync.Pool
 }
 
-func (p *TimeSeriesPool) Get() *TimeSeries {
+func (p *TimeSeriesPool) Get() *model.TimeSeries {
 	v := p.p.Get()
 	if v == nil {
-		return &TimeSeries{}
+		return &model.TimeSeries{}
 	}
-	return v.(*TimeSeries)
+	return v.(*model.TimeSeries)
 }
 
-func (p *TimeSeriesPool) Put(v *TimeSeries) {
+func (p *TimeSeriesPool) Put(v *model.TimeSeries) {
 	v.Labels = v.Labels[:0]
 	v.Samples = v.Samples[:0]
-	v.sortedLabelValue = v.sortedLabelValue[:0]
-	v.tsid = 0
 	p.p.Put(v)
 }
 
@@ -46,32 +28,15 @@ type TimeSeriesSlicePool struct {
 	p sync.Pool
 }
 
-func (p *TimeSeriesSlicePool) Get() *[]*TimeSeries {
+func (p *TimeSeriesSlicePool) Get() *[]*model.TimeSeries {
 	v := p.p.Get()
 	if v == nil {
-		return &[]*TimeSeries{}
+		return &[]*model.TimeSeries{}
 	}
-	return v.(*[]*TimeSeries)
+	return v.(*[]*model.TimeSeries)
 }
 
-func (p *TimeSeriesSlicePool) Put(v *[]*TimeSeries) {
+func (p *TimeSeriesSlicePool) Put(v *[]*model.TimeSeries) {
 	*v = (*v)[:0]
-	p.p.Put(v)
-}
-
-type BufferPool struct {
-	p sync.Pool
-}
-
-func (p *BufferPool) Get() *bytes.Buffer {
-	v := p.p.Get()
-	if v == nil {
-		return bytes.NewBuffer(nil)
-	}
-	return v.(*bytes.Buffer)
-}
-
-func (p *BufferPool) Put(v *bytes.Buffer) {
-	v.Reset()
 	p.p.Put(v)
 }

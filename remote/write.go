@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
 
 	"github.com/golang/snappy"
 	"github.com/pingcap/log"
@@ -55,7 +56,7 @@ func WriteHandler(storage store.MetricStorage) http.HandlerFunc {
 				if label.Name == "__name__" {
 					storeTS.Name = label.Value
 				} else {
-					storeTS.Labels = append(storeTS.Labels, store.Label{
+					storeTS.Labels = append(storeTS.Labels, model.Label{
 						Name:  label.Name,
 						Value: label.Value,
 					})
@@ -69,7 +70,7 @@ func WriteHandler(storage store.MetricStorage) http.HandlerFunc {
 				if math.IsNaN(sample.Value) {
 					continue
 				}
-				storeTS.Samples = append(storeTS.Samples, store.Sample{
+				storeTS.Samples = append(storeTS.Samples, model.Sample{
 					TimestampMs: sample.Timestamp,
 					Value:       sample.Value,
 				})

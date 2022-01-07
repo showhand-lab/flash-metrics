@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
 	"github.com/showhand-lab/flash-metrics-storage/utils"
 
 	"github.com/stretchr/testify/suite"
@@ -41,16 +42,18 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	now := time.Now().UnixNano() / int64(time.Millisecond)
 
 	metricStorage := store.NewDefaultMetricStorage(s.db)
-	err := metricStorage.Store(context.Background(), store.TimeSeries{
+	defer metricStorage.Close()
+
+	err := metricStorage.Store(context.Background(), model.TimeSeries{
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "method",
 			Value: "GET",
 		}, {
 			Name:  "handler",
 			Value: "/messages",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       100.0,
 		}, {
@@ -60,39 +63,39 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	})
 	s.NoError(err)
 
-	err = metricStorage.Store(context.Background(), store.TimeSeries{
+	err = metricStorage.Store(context.Background(), model.TimeSeries{
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "method",
 			Value: "POST",
 		}, {
 			Name:  "handler",
 			Value: "/messages",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       77.0,
 		}},
 	})
 	s.NoError(err)
 
-	err = metricStorage.BatchStore(context.Background(), []*store.TimeSeries{{
+	err = metricStorage.BatchStore(context.Background(), []*model.TimeSeries{{
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "scheme",
 			Value: "http",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       42.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "scheme",
 			Value: "https",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       88.0,
 		}},
@@ -103,70 +106,70 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })
-	s.Equal(ts, []store.TimeSeries{{
+	s.Equal(ts, []model.TimeSeries{{
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "handler",
 			Value: "/messages",
 		}, {
 			Name:  "method",
 			Value: "GET",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       100.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "handler",
 			Value: "/messages",
 		}, {
 			Name:  "method",
 			Value: "POST",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       77.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "scheme",
 			Value: "http",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       42.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "scheme",
 			Value: "https",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       88.0,
 		}},
 	}})
 
-	ts, err = metricStorage.Query(context.Background(), now, now+15, "api_http_requests_total", []store.Matcher{{
+	ts, err = metricStorage.Query(context.Background(), now, now+15, "api_http_requests_total", []model.Matcher{{
 		LabelName:  "method",
 		LabelValue: "GET",
 	}})
 	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
-	s.Equal(ts, []store.TimeSeries{{
+	s.Equal(ts, []model.TimeSeries{{
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "handler",
 			Value: "/messages",
 		}, {
 			Name:  "method",
 			Value: "GET",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       100.0,
 		}, {
@@ -175,14 +178,14 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 		}},
 	}})
 
-	ts, err = metricStorage.Query(context.Background(), now, now+15, "api_http_requests_total", []store.Matcher{{
+	ts, err = metricStorage.Query(context.Background(), now, now+15, "api_http_requests_total", []model.Matcher{{
 		LabelName:  "job",
 		LabelValue: "tidb",
 	}})
 	s.NoError(err)
 	s.Equal(len(ts), 0)
 
-	ts, err = metricStorage.Query(context.Background(), now+15, now+15, "api_http_requests_total", []store.Matcher{{
+	ts, err = metricStorage.Query(context.Background(), now+15, now+15, "api_http_requests_total", []model.Matcher{{
 		LabelName:  "method",
 		LabelValue: "GET",
 		IsNegative: true,
@@ -190,7 +193,7 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	s.NoError(err)
 	s.Equal(len(ts), 0)
 
-	ts, err = metricStorage.Query(context.Background(), now, now, "api_http_requests_total", []store.Matcher{{
+	ts, err = metricStorage.Query(context.Background(), now, now, "api_http_requests_total", []model.Matcher{{
 		LabelName:  "method",
 		LabelValue: ".*T",
 		IsRE:       true,
@@ -198,35 +201,35 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
 	sort.Slice(ts[1].Labels, func(i, j int) bool { return ts[1].Labels[i].Name < ts[1].Labels[j].Name })
-	s.Equal(ts, []store.TimeSeries{{
+	s.Equal(ts, []model.TimeSeries{{
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "handler",
 			Value: "/messages",
 		}, {
 			Name:  "method",
 			Value: "GET",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       100.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "handler",
 			Value: "/messages",
 		}, {
 			Name:  "method",
 			Value: "POST",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       77.0,
 		}},
 	}})
 
-	ts, err = metricStorage.Query(context.Background(), now, now, "api_http_requests_total", []store.Matcher{{
+	ts, err = metricStorage.Query(context.Background(), now, now, "api_http_requests_total", []model.Matcher{{
 		LabelName:  "method",
 		LabelValue: "PO.*",
 		IsRE:       true,
@@ -234,36 +237,36 @@ func (s *testDefaultMetricsSuite) TestDefaultMetricsBasic() {
 	}})
 	s.NoError(err)
 	sort.Slice(ts[0].Labels, func(i, j int) bool { return ts[0].Labels[i].Name < ts[0].Labels[j].Name })
-	s.Equal(ts, []store.TimeSeries{{
+	s.Equal(ts, []model.TimeSeries{{
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "handler",
 			Value: "/messages",
 		}, {
 			Name:  "method",
 			Value: "GET",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       100.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "scheme",
 			Value: "http",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       42.0,
 		}},
 	}, {
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "scheme",
 			Value: "https",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       88.0,
 		}},

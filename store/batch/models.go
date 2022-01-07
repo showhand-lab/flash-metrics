@@ -1,11 +1,22 @@
-package store
+package batch
 
-import "bytes"
+import (
+	"bytes"
+	"context"
+	"sync"
+
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
+)
+
+type Task struct {
+	WG    *sync.WaitGroup
+	Ctx   context.Context
+	ErrCh chan error
+	Data  []*TimeSeries
+}
 
 type TimeSeries struct {
-	Name    string
-	Labels  []Label
-	Samples []Sample
+	*model.TimeSeries
 
 	// an internal fields for store
 	// used to organize label value by label id
@@ -16,23 +27,6 @@ type TimeSeries struct {
 
 	// an internal fields for store
 	tsid int64
-}
-
-type Label struct {
-	Name  string
-	Value string
-}
-
-type Sample struct {
-	TimestampMs int64
-	Value       float64
-}
-
-type Matcher struct {
-	LabelName  string
-	LabelValue string
-	IsRE       bool
-	IsNegative bool
 }
 
 func (ts *TimeSeries) marshalSortedLabel(buffer *bytes.Buffer) {
