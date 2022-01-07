@@ -21,8 +21,8 @@ func ServeHTTP(listener net.Listener, storage store.MetricStorage) {
 	mux.HandleFunc("/write", remote.WriteHandler(storage))
 	mux.HandleFunc("/read", remote.ReadHandler(storage))
 
-	mux.HandleFunc("/api/v1/query", QueryHandler)
-	mux.HandleFunc("/api/v1/query_range", QueryRangeHandler)
+	mux.HandleFunc("/api/v1/query", QueryHandler(storage))
+	mux.HandleFunc("/api/v1/query_range", QueryRangeHandler(storage))
 	// mux.HandleFunc("/match", _)
 
 	mux.HandleFunc("/", DefaultHandler)

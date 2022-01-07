@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/stats"
 	"github.com/showhand-lab/flash-metrics-storage/parser"
+	"github.com/showhand-lab/flash-metrics-storage/store"
 	"go.uber.org/zap"
 	"io/ioutil"
 	"math"
@@ -58,70 +59,72 @@ func parseDuration(s string) (time.Duration, error) {
 	return 0, fmt.Errorf("cannot parse %q to a valid duration", s)
 }
 
-func QueryHandler(w http.ResponseWriter, r *http.Request) {
-	compressed, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+func QueryHandler(storage store.MetricStorage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		compressed, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		log.Debug("received http request:", zap.ByteString("request", compressed))
+
+		values, err := url.ParseQuery(string(compressed))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		for key, value := range values {
+			log.Debug("", zap.String("key", key), zap.Strings("value", value))
+		}
+
+		time, err := parseTime(values["time"][0])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
+		_, err = parser.NewInstantQuery(storage, values["query"][0], time)
 	}
-
-	log.Debug("received http request:", zap.ByteString("request", compressed))
-
-	values, err := url.ParseQuery(string(compressed))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	for key, value := range values {
-		log.Debug("", zap.String("key", key), zap.Strings("value", value))
-	}
-
-	time, err := parseTime(values["time"][0])
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	}
-
-	_ = parser.NewQuery(values["query"][0], time)
 }
 
-func QueryRangeHandler(w http.ResponseWriter, r *http.Request) {
-	compressed, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+func QueryRangeHandler(storage store.MetricStorage) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		compressed, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		log.Debug("received http request:", zap.ByteString("request", compressed))
+
+		values, err := url.ParseQuery(string(compressed))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		for key, value := range values {
+			log.Debug("", zap.String("key", key), zap.Strings("value", value))
+		}
+
+		start, err := parseTime(values["start"][0])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		end, err := parseTime(values["end"][0])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		step, err := parseDuration(values["step"][0])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
+		_ = parser.NewRangeQuery(storage, values["query"][0], start, end, step)
+
+		// db.execute(sql)
 	}
-
-	log.Debug("received http request:", zap.ByteString("request", compressed))
-
-	values, err := url.ParseQuery(string(compressed))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	for key, value := range values {
-		log.Debug("", zap.String("key", key), zap.Strings("value", value))
-	}
-
-	start, err := parseTime(values["start"][0])
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	}
-	end, err := parseTime(values["end"][0])
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	}
-	step, err := parseDuration(values["step"][0])
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	}
-
-	_ = parser.NewRangeQuery(values["query"][0], start, end, step)
-
-	// db.execute(sql)
-
-
 }
 
 func DefaultHandler(w http.ResponseWriter, r *http.Request) {
