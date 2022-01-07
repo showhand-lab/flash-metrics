@@ -79,12 +79,13 @@ func QueryHandler(storage store.MetricStorage) http.HandlerFunc {
 			log.Debug("", zap.String("key", key), zap.Strings("value", value))
 		}
 
-		time, err := parseTime(values["time"][0])
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		scalar := promql.Scalar{T: 1, V: 1.0}
+		data := queryData{
+			"scalar",
+			scalar,
+			nil,
 		}
-
-		_, err = parser.NewInstantQuery(storage, values["query"][0], time)
+		respond(w, data)
 	}
 }
 
@@ -121,7 +122,7 @@ func QueryRangeHandler(storage store.MetricStorage) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 
-		_ = parser.NewRangeQuery(storage, values["query"][0], start, end, step)
+		_, err = parser.NewRangeQuery(storage, values["query"][0], start, end, step)
 
 		// db.execute(sql)
 	}

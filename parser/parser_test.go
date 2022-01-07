@@ -48,3 +48,15 @@ func TestQueryParse(t *testing.T) {
 	}
 	fmt.Printf("well done, %v promql passed, %v promql skipped", cnt, skipped)
 }
+
+func TestTiFlashRequestQPS(t *testing.T) {
+	// line := "sum(rate(tiflash_coprocessor_request_count{tidb_cluster=\"$tidb_cluster\", instance=~\"$instance\"}[1m])) by (type)"
+
+	line := "rate(tiflash_coprocessor_request_count{tidb_cluster=\"$tidb_cluster\", instance=~\"$instance\"}[1m])"
+
+	_, err := NewRangeQuery(nil, line, time.Now(), time.Now(), time.Second)
+	if err != nil {
+		log.Fatal("parse failed", zap.Error(err))
+	}
+
+}

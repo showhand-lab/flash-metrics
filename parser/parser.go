@@ -10,11 +10,25 @@ import (
 	"time"
 )
 
+func NewRangeQuery(storage store.MetricStorage, qry string, start, end time.Time, step time.Duration) (sql string, err error) {
+	log.Info("", zap.Any("qry",  qry))
 
+	expr, err := promql.ParseExpr(qry)
 
-func NewRangeQuery(storage store.MetricStorage, qry string, start, end time.Time, step time.Duration) (sql string) {
+	if err != nil {
+		log.Warn("parse promql failed", zap.Error(err))
+		return "", err
+	}
 
-	return ""
+	sql, err = buildSQLForInstantQuery(expr, start)
+	if err != nil {
+		log.Warn("build sql failed", zap.Error(err))
+		return sql, err
+	}
+
+	log.Info("build success", zap.String("sql", sql))
+
+	return "", nil
 }
 
 func NewInstantQuery(storage store.MetricStorage, qry string, time time.Time) (sql string, err error) {
@@ -42,6 +56,8 @@ func buildSQLForInstantQuery(expr promql.Expr, time time.Time) (sql string, err 
 	switch x := expr.(type) {
 	case *promql.VectorSelector:
 		return buildVectorSelector(x, time)
+	case *promql.MatrixSelector:
+		return buildMatrixSelector(x, time)
 	case *promql.Call:
 		return buildCall(x, time)
 	case *promql.AggregateExpr:
@@ -58,6 +74,14 @@ func buildSQLForInstantQuery(expr promql.Expr, time time.Time) (sql string, err 
 }
 
 func buildVectorSelector(vc *promql.VectorSelector, t time.Time) (sql string, err error) {
+	//var sb strings.Builder
+
+	sql = "select * from flash_metrics_index where metric_name = " + vc.Name + " and timestamp = " + strconv.FormatInt(t.Unix(), 10)
+
+	return sql, nil
+}
+
+func buildMatrixSelector(vc *promql.MatrixSelector, t time.Time) (sql string, err error) {
 	//var sb strings.Builder
 
 	sql = "select * from flash_metrics_index where metric_name = " + vc.Name + " and timestamp = " + strconv.FormatInt(t.Unix(), 10)
