@@ -9,6 +9,7 @@ import (
 
 	"github.com/showhand-lab/flash-metrics-storage/config"
 	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
 
 	"github.com/pingcap/log"
 	io_prometheus_client "github.com/prometheus/client_model/go"
@@ -92,15 +93,15 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 		return
 	}
 
-	timeSeries := make([]store.TimeSeries, 0)
+	timeSeries := make([]*model.TimeSeries, 0)
 	nowMs := time.Now().UnixNano() / int64(time.Millisecond)
 	for name, metricFamily := range metricFamilyMap {
 
 		// TODO: support extra labels from scrape configs
 		for _, metric := range metricFamily.GetMetric() {
-			labels := make([]store.Label, 0)
+			labels := make([]model.Label, 0)
 			for _, l := range metric.GetLabel() {
-				labels = append(labels, store.Label{
+				labels = append(labels, model.Label{
 					Name:  *l.Name,
 					Value: *l.Value,
 				})
@@ -109,30 +110,30 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 			switch metricFamily.GetType() {
 			case io_prometheus_client.MetricType_COUNTER:
 				value = metric.Counter.GetValue()
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name,
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       value,
 					}},
 				})
 			case io_prometheus_client.MetricType_GAUGE:
 				value = metric.Gauge.GetValue()
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name,
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       value,
 					}},
 				})
 			case io_prometheus_client.MetricType_UNTYPED:
 				value = metric.Untyped.GetValue()
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name,
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       value,
 					}},
@@ -140,31 +141,31 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 			case io_prometheus_client.MetricType_SUMMARY:
 				summary := metric.GetSummary()
 				for _, quantile := range summary.GetQuantile() {
-					quantileLabels := append(labels, store.Label{
+					quantileLabels := append(labels, model.Label{
 						Name:  "quantile",
 						Value: fmt.Sprintf("%f", quantile.GetQuantile()),
 					})
-					timeSeries = append(timeSeries, store.TimeSeries{
+					timeSeries = append(timeSeries, &model.TimeSeries{
 						Name:   name,
 						Labels: quantileLabels,
-						Samples: []store.Sample{{
+						Samples: []model.Sample{{
 							TimestampMs: nowMs,
 							Value:       quantile.GetValue(),
 						}},
 					})
 				}
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name + "_sum",
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       *summary.SampleSum,
 					}},
 				})
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name + "_count",
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       float64(*summary.SampleCount),
 					}},
@@ -172,32 +173,32 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 			case io_prometheus_client.MetricType_HISTOGRAM:
 				histogram := metric.GetHistogram()
 				for _, bucket := range histogram.GetBucket() {
-					histogramLabels := append(labels, store.Label{
+					histogramLabels := append(labels, model.Label{
 						Name:  "le",
 						Value: fmt.Sprintf("%f", bucket.GetUpperBound()),
 					})
-					timeSeries = append(timeSeries, store.TimeSeries{
+					timeSeries = append(timeSeries, &model.TimeSeries{
 						Name:   name,
 						Labels: histogramLabels,
-						Samples: []store.Sample{{
+						Samples: []model.Sample{{
 							TimestampMs: nowMs,
 							Value:       float64(*bucket.CumulativeCount),
 						}},
 					})
 				}
 
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name + "_sum",
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       *histogram.SampleSum,
 					}},
 				})
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name + "_count",
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       float64(*histogram.SampleCount),
 					}},
@@ -208,15 +209,7 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 		}
 	}
 
-	for _, tseries := range timeSeries {
-		// TODO: 使用 batch store
-		log.Debug("time series",
-			zap.String("name", tseries.Name),
-			zap.Int64("sample timestamp", tseries.Samples[0].TimestampMs),
-			zap.Float64("sample value", tseries.Samples[0].Value))
-		err := metricStore.Store(tseries)
-		if err != nil {
-			return
-		}
+	if err = metricStore.BatchStore(context.Background(), timeSeries); err != nil {
+		log.Warn("failed to batch store time series", zap.Error(err))
 	}
 }

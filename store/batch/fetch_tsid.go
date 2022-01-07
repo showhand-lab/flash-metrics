@@ -6,13 +6,11 @@ import (
 	"errors"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/showhand-lab/flash-metrics-storage/metas"
 	"github.com/showhand-lab/flash-metrics-storage/table"
 
-	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/pingcap/log"
 	"go.uber.org/zap"
 )
@@ -26,19 +24,15 @@ var (
 type FetchTSIDWorker struct {
 	ctx context.Context
 
-	cache struct {
-		sync.Mutex
-		v *simplelru.LRU
-	}
-	meta metas.MetaStorage
-	db   *sql.DB
+	cache *LRU
+	meta  metas.MetaStorage
+	db    *sql.DB
 
 	fetchTSIDTasks    chan Task
 	updateDateTasks   chan Task
 	insertSampleTasks chan Task
 
-	batchSize                int
-	batchSizeForInsertSample int
+	batchSize int
 }
 
 func NewFetchTSIDWorker(
@@ -48,29 +42,22 @@ func NewFetchTSIDWorker(
 	fetchTSIDTasks chan Task,
 	updateDateTasks chan Task,
 	insertSampleTasks chan Task,
+	cache *LRU,
 	batchSize int,
-	batchSizeForInsertSample int,
 ) *FetchTSIDWorker {
-	c, _ := simplelru.NewLRU(4096, nil)
 
 	return &FetchTSIDWorker{
 		ctx: ctx,
 
-		cache: struct {
-			sync.Mutex
-			v *simplelru.LRU
-		}{
-			v: c,
-		},
-		meta: meta,
-		db:   db,
+		cache: cache,
+		meta:  meta,
+		db:    db,
 
 		fetchTSIDTasks:    fetchTSIDTasks,
 		updateDateTasks:   updateDateTasks,
 		insertSampleTasks: insertSampleTasks,
 
-		batchSize:                batchSize,
-		batchSizeForInsertSample: batchSizeForInsertSample,
+		batchSize: batchSize,
 	}
 }
 
@@ -92,20 +79,21 @@ func (f *FetchTSIDWorker) Start() {
 }
 
 func (f *FetchTSIDWorker) handleTask(t Task) error {
-	err := f.splitBatch(f.batchSize, t.Data, func(batch []*TimeSeries) error {
+	return f.splitBatch(f.batchSize, t.Data, func(batch []*TimeSeries) error {
 		if err := f.batchFillSortedLabelValues(t.Ctx, batch); err != nil {
 			return err
 		}
 		if err := f.batchFillTSID(t.Ctx, batch); err != nil {
 			return err
 		}
-		return nil
+		newTask := Task{
+			WG:    t.WG,
+			Ctx:   t.Ctx,
+			ErrCh: t.ErrCh,
+			Data:  batch,
+		}
+		return f.scheduleToNextWorker(newTask)
 	})
-	if err != nil {
-		return err
-	}
-
-	return f.scheduleToNextWorker(t)
 }
 
 func (f *FetchTSIDWorker) scheduleToNextWorker(t Task) error {
@@ -118,24 +106,15 @@ func (f *FetchTSIDWorker) scheduleToNextWorker(t Task) error {
 		return errors.New("update date workers are busy")
 	}
 
-	return f.splitBatch(f.batchSizeForInsertSample, t.Data, func(series []*TimeSeries) error {
-		newTask := Task{
-			WG:    t.WG,
-			Ctx:   t.Ctx,
-			ErrCh: t.ErrCh,
-			Data:  series,
-		}
-		t.WG.Add(1)
-		select {
-		case f.insertSampleTasks <- newTask:
-		default:
-			log.Warn("insert sample workers are busy, drop task")
-			t.WG.Done()
-			return errors.New("update date workers are busy")
-		}
-
-		return nil
-	})
+	t.WG.Add(1)
+	select {
+	case f.insertSampleTasks <- t:
+	default:
+		log.Warn("insert sample workers are busy, drop task")
+		t.WG.Done()
+		return errors.New("insert sample workers are busy")
+	}
+	return nil
 }
 
 func (f *FetchTSIDWorker) batchFillSortedLabelValues(ctx context.Context, timeSeries []*TimeSeries) error {
@@ -179,7 +158,7 @@ func (f *FetchTSIDWorker) batchFillTSID(ctx context.Context, timeSeries []*TimeS
 		ts.marshalSortedLabel(buffer)
 
 		// fast path
-		if v, ok := f.cache.v.Get(buffer.String()); ok {
+		if v, ok := f.cache.Inner.Get(buffer.String()); ok {
 			ts.tsid = v.(int64)
 			continue
 		}
@@ -217,24 +196,24 @@ func (f *FetchTSIDWorker) batchFillTSID(ctx context.Context, timeSeries []*TimeS
 	readCount := 0
 	*args = (*args)[:0]
 	sb.Reset()
-	sb.WriteString("SELECT _tidb_rowid FROM (\n")
+	sb.WriteString("SELECT t.tsid FROM (\n")
 	for i, ts := range *slowPathTs {
 		if readCount != 0 {
 			sb.WriteString("UNION ALL\n")
 		}
 		sb.WriteString("SELECT ")
 		sb.WriteString(strconv.Itoa(i))
-		sb.WriteString(" AS id, _tidb_rowid FROM flash_metrics_index WHERE metric_name = ? ")
+		sb.WriteString(" AS id, _tidb_rowid tsid FROM flash_metrics_index WHERE metric_name = ? ")
 		*args = append(*args, ts.Name)
 		for j, lv := range ts.sortedLabelValue {
 			sb.WriteString("AND label")
 			sb.WriteString(strconv.Itoa(j))
-			sb.WriteString(" = ?\n")
+			sb.WriteString(" = ? ")
 			*args = append(*args, lv)
 		}
 		readCount += 1
 	}
-	sb.WriteString(") ORDER BY id")
+	sb.WriteString(") t ORDER BY id")
 
 	rows, err := f.db.QueryContext(ctx, sb.String(), *args...)
 	if err != nil {
@@ -253,7 +232,7 @@ func (f *FetchTSIDWorker) batchFillTSID(ctx context.Context, timeSeries []*TimeS
 		buffer.Reset()
 		ts.marshalSortedLabel(buffer)
 		f.cache.Lock()
-		f.cache.v.Add(buffer.String(), tsid)
+		f.cache.Inner.Add(buffer.String(), tsid)
 		f.cache.Unlock()
 	}
 

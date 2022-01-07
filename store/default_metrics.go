@@ -15,14 +15,14 @@ import (
 	"github.com/showhand-lab/flash-metrics-storage/store/model"
 
 	"github.com/pingcap/log"
+	"go.uber.org/zap"
 )
 
 const (
-	defaultBatchSize                = 500
-	defaultBatchSizeForInsertSample = 150
+	defaultBatchSize = 500
 
-	defaultFetchTSIDWorkers    = 4
-	defaultUpdateDateWorkers   = 4
+	defaultFetchTSIDWorkers    = 8
+	defaultUpdateDateWorkers   = 8
 	defaultInsertSampleWorkers = 8
 )
 
@@ -85,6 +85,7 @@ func NewDefaultMetricStorage(db *sql.DB) *DefaultMetricStorage {
 		}()
 	}
 
+	cache := batch.NewLRU(102400)
 	for i := 0; i < defaultFetchTSIDWorkers; i++ {
 		ms.wg.Add(1)
 		worker := batch.NewFetchTSIDWorker(
@@ -94,8 +95,8 @@ func NewDefaultMetricStorage(db *sql.DB) *DefaultMetricStorage {
 			ms.batchTasks,
 			updateDateTasks,
 			insertSampleTasks,
+			cache,
 			defaultBatchSize,
-			defaultBatchSizeForInsertSample,
 		)
 		go func() {
 			worker.Start()
@@ -144,6 +145,11 @@ func (d *DefaultMetricStorage) Store(ctx context.Context, timeSeries model.TimeS
 }
 
 func (d *DefaultMetricStorage) BatchStore(ctx context.Context, timeSeries []*model.TimeSeries) error {
+	now := time.Now()
+	defer func() {
+		log.Info("batch store", zap.Duration("in", time.Since(now)), zap.Int("size", len(timeSeries)))
+	}()
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
