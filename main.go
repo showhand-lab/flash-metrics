@@ -4,116 +4,125 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	stdlog "log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/pingcap/log"
+	"github.com/showhand-lab/flash-metrics-storage/config"
+	"github.com/showhand-lab/flash-metrics-storage/scrape"
 	"github.com/showhand-lab/flash-metrics-storage/service"
 	"github.com/showhand-lab/flash-metrics-storage/store"
 	"github.com/showhand-lab/flash-metrics-storage/table"
 	"github.com/showhand-lab/flash-metrics-storage/utils/printer"
+
+	"github.com/pingcap/log"
 	"go.uber.org/zap"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 const (
-	nmTiDBAddr = "tidb.address"
-	nmAddr     = "address"
-	nmLogLevel = "log.level"
+	nmConfigFilePath = "config.file"
+	nmAddr           = "address"
+	nmTiDBAddr       = "tidb.address"
+	nmLogLevel       = "log.level"
+	nmLogFile        = "log.file"
+	nmCleanup        = "cleanup"
 )
 
-// flags
 var (
-	tidbAddr   = flag.String(nmTiDBAddr, "127.0.0.1:4000", "The address of TiDB")
-	listenAddr = flag.String(nmAddr, "127.0.0.1:9091", "TCP address to listen for http connections")
-	logLevel   = flag.String(nmLogLevel, "info", "Log level")
+	cfgFilePath = flag.String(nmConfigFilePath, "", "YAML config file path for flashmetrics.")
+	cleanup     = flag.Bool(nmCleanup, false, "Whether to cleanup data during shutting down, set for debug")
+	tidbAddr    = flag.String(nmTiDBAddr, config.DefaultFlashMetricsConfig.TiDBConfig.Address, "The address of TiDB")
+	listenAddr  = flag.String(nmAddr, config.DefaultFlashMetricsConfig.WebConfig.Address, "TCP address to listen for http connections")
+	logLevel    = flag.String(nmLogLevel, config.DefaultFlashMetricsConfig.LogConfig.LogLevel, "Log level")
+	logFile     = flag.String(nmLogFile, config.DefaultFlashMetricsConfig.LogConfig.LogFile, "Log file")
 )
 
-// global variables
-var (
-	db *sql.DB
-
-	mstore store.MetricStorage
-)
-
-func setLogLevel() {
-	oldLevel := log.GetLevel()
-	err := oldLevel.Set(*logLevel)
-	if err != nil {
-		log.Fatal("set log level failed", zap.Error(err))
-	}
-	log.SetLevel(oldLevel)
+func overrideConfig(config *config.FlashMetricsConfig) {
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case nmAddr:
+			config.WebConfig.Address = *listenAddr
+		case nmTiDBAddr:
+			config.TiDBConfig.Address = *tidbAddr
+		case nmLogFile:
+			config.LogConfig.LogFile = *logFile
+		case nmLogLevel:
+			config.LogConfig.LogLevel = *logLevel
+		}
+	})
 }
 
-func initDatabase() {
-	if len(*tidbAddr) == 0 {
-		log.Fatal("empty tidb address", zap.String("address", *tidbAddr))
+func initLogger(cfg *config.FlashMetricsConfig) error {
+	logCfg := &log.Config{
+		Level: cfg.LogConfig.LogLevel,
+		File:  log.FileLogConfig{Filename: cfg.LogConfig.LogFile},
 	}
 
-	// Setup
-	d, err := sql.Open("mysql", fmt.Sprintf("root@(%s)/test", *tidbAddr))
+	logger, p, err := log.InitLogger(logCfg)
+	if err != nil {
+		return err
+	}
+	log.ReplaceGlobals(logger, p)
+	return nil
+}
+
+func initDatabase(cfg *config.FlashMetricsConfig) *sql.DB {
+	now := time.Now()
+	log.Info("setting up database")
+	defer func() {
+		log.Info("init database done", zap.Duration("in", time.Since(now)))
+	}()
+
+	db, err := sql.Open("mysql", fmt.Sprintf("root@(%s)/test", cfg.TiDBConfig.Address))
 	if err != nil {
 		log.Fatal("failed to open db", zap.Error(err))
 	}
-	d.SetConnMaxLifetime(time.Minute * 3)
-	d.SetMaxOpenConns(10)
-	d.SetMaxIdleConns(10)
-	db = d
+	db.SetConnMaxLifetime(time.Minute * 3)
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(10)
 
 	for _, stmt := range []string{table.CreateMeta, table.CreateIndex, table.CreateUpdate, table.CreateData} {
 		if _, err = db.Exec(stmt); err != nil {
 			log.Fatal("failed to create table", zap.String("statement", stmt), zap.Error(err))
 		}
 	}
+	log.Info("create tables successfully")
 
 	for _, stmt := range []string{table.AlterTiflashIndex, table.AlterTiflashUpdate, table.AlterTiflashData} {
 		if _, err = db.Exec(stmt); err != nil {
-			log.Fatal("failed to set replica", zap.String("statement", stmt), zap.Error(err))
+			log.Warn("failed to set replica", zap.String("statement", stmt), zap.Error(err))
 		}
 	}
+
+	return db
 }
 
-func closeDatabase() {
-	if db != nil {
-		if err := db.Close(); err != nil {
-			log.Warn("failed to close database", zap.Error(err))
+func closeDatabase(db *sql.DB) {
+	now := time.Now()
+	log.Info("closing database")
+	defer func() {
+		log.Info("close database done", zap.Duration("in", time.Since(now)))
+	}()
+
+	if *cleanup {
+		for _, stmt := range []string{table.DropData, table.DropUpdate, table.DropIndex, table.DropMeta} {
+			if _, err := db.Exec(stmt); err != nil {
+				log.Warn("failed to drop table", zap.String("statement", stmt), zap.Error(err))
+			}
 		}
-		db = nil
+		log.Info("clean up database successfully")
+	}
+
+	if err := db.Close(); err != nil {
+		log.Warn("failed to close database", zap.Error(err))
 	}
 }
 
-func initStore() {
-	mstore = store.NewDefaultMetricStorage(db)
-}
-
-func closeStore() {}
-
-func main() {
-	flag.Parse()
-
-	setLogLevel()
-
-	printer.PrintFlashMetricsStorageInfo()
-
-	initDatabase()
-	defer closeDatabase()
-
-	initStore()
-	defer closeStore()
-
-	if len(*listenAddr) == 0 {
-		log.Fatal("empty listen address", zap.String("listen-address", *listenAddr))
-	}
-	service.Init(*listenAddr)
-	defer service.Stop()
-
-	sig := WaitForSigterm()
-	log.Info("received signal", zap.String("sig", sig.String()))
-}
-
-func WaitForSigterm() os.Signal {
+func waitForSigterm() os.Signal {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	for {
@@ -124,4 +133,39 @@ func WaitForSigterm() os.Signal {
 		}
 		return sig
 	}
+}
+
+func main() {
+	flag.Parse()
+
+	flashMetricsConfig, err := config.LoadConfig(*cfgFilePath, overrideConfig)
+	if err != nil {
+		// logger isn't initialized, need to use stdlog
+		stdlog.Fatalf("failed to load config file, config.file: %s", *cfgFilePath)
+	}
+	err = initLogger(flashMetricsConfig)
+	if err != nil {
+		// failed to initialize logger, need to use stdlog
+		stdlog.Fatalf("failed to init logger, err: %s", err.Error())
+	}
+
+	printer.PrintFlashMetricsInfo()
+
+	if len(flashMetricsConfig.WebConfig.Address) == 0 {
+		log.Fatal("empty listen address", zap.String("listen-address", flashMetricsConfig.WebConfig.Address))
+	}
+
+	db := initDatabase(flashMetricsConfig)
+	defer closeDatabase(db)
+
+	storage := store.NewDefaultMetricStorage(db)
+
+	service.Init(flashMetricsConfig, storage)
+	defer service.Stop()
+
+	scrape.Init(flashMetricsConfig, storage)
+	defer scrape.Stop()
+
+	sig := waitForSigterm()
+	log.Info("received signal", zap.String("sig", sig.String()))
 }

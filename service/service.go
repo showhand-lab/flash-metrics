@@ -3,12 +3,16 @@ package service
 import (
 	"net"
 
-	"github.com/pingcap/log"
+	"github.com/showhand-lab/flash-metrics-storage/config"
 	"github.com/showhand-lab/flash-metrics-storage/service/http"
+	"github.com/showhand-lab/flash-metrics-storage/store"
+
+	"github.com/pingcap/log"
 	"go.uber.org/zap"
 )
 
-func Init(addr string) {
+func Init(cfg *config.FlashMetricsConfig, storage store.MetricStorage) {
+	addr := cfg.WebConfig.Address
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal("failed to listen",
@@ -17,7 +21,7 @@ func Init(addr string) {
 		)
 	}
 
-	go http.ServeHTTP(listener)
+	go http.ServeHTTP(listener, storage)
 
 	log.Info(
 		"starting http service",

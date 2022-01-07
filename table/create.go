@@ -4,7 +4,7 @@ const (
 	CreateData = `
 CREATE TABLE IF NOT EXISTS flash_metrics_data (
     tsid bigint NOT NULL,
-    ts TIMESTAMP NOT NULL,
+    ts TIMESTAMP(3) NOT NULL,
     v DOUBLE
 );
 `
