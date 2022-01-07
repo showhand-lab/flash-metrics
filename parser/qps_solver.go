@@ -1,21 +1,22 @@
 package parser
 
 import (
-	"github.com/pkg/errors"
+	"github.com/pingcap/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/showhand-lab/flash-metrics-storage/metas"
 	"github.com/showhand-lab/flash-metrics-storage/store"
+	"go.uber.org/zap"
 	"strconv"
 	"strings"
 )
 
-var qpsPattern =
+const qpsPattern =
 `
 select tsid, ts-ts%? tsmod, (max(v)-min(v))/? rate_v
 from flash_metrics_data
-where flash_metrics_data.tsid in (?)
-and ts >= ? and ts < ?
+where tsid in (?)
+and ts >= ? and ts <= ?
 group by tsid, tsmod
 `
 
@@ -55,12 +56,6 @@ func (solver *QPSSolver) GetTsIDs(storage *store.DefaultMetricStorage) (tsids_st
 		return
 	}
 
-	for _, matcher := range solver.LabelMatchers {
-		if _, ok := m.Labels[metas.LabelName(matcher.Name)]; !ok {
-			return "", errors.Errorf("label not found!")
-		}
-	}
-
 	// todo：use interfaceSliceP
 	var args []interface{}
 	var sb strings.Builder
@@ -74,7 +69,11 @@ where metric_name = ?
 	args = append(args, solver.metricsName)
 
 	for _, matcher := range solver.LabelMatchers {
-		labelID := m.Labels[metas.LabelName(matcher.Name)]
+		labelID, ok := m.Labels[metas.LabelName(matcher.Name)]
+		if !ok {
+			log.Error("label not found!", zap.String("label", matcher.Name))
+			continue
+		}
 		sb.WriteString("AND label")
 		sb.WriteString(strconv.Itoa(int(labelID)))
 
@@ -91,7 +90,7 @@ where metric_name = ?
 		args = append(args, matcher.Value)
 	}
 
-	rows, err := storage.DB.Query(sb.String(), args)
+	rows, err := storage.DB.Query(sb.String(), args...)
 	if err != nil {
 		return "", err
 	}
@@ -99,12 +98,30 @@ where metric_name = ?
 
 	var tsids []string
 	for rows.Next() {
-		var x []interface{}
-		if err = rows.Scan(x...); err != nil {
+		var x int
+		if err = rows.Scan(&x); err != nil {
 			return "", err
 		}
-		tsids = append(tsids, x[0].(string))
+		tsids = append(tsids, strconv.Itoa(x))
 	}
 
 	return strings.Join(tsids, ","), nil
+}
+
+func (solver *QPSSolver) DoQuery(storage *store.DefaultMetricStorage) error {
+	rows, err := storage.DB.Query(qpsPattern, solver.args...)
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		var tsid int
+		var tsmod int64
+		var value float64
+		if err = rows.Scan(&tsid, &tsmod, &value); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

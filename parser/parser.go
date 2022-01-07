@@ -26,11 +26,14 @@ func NewRangeQuery(storage store.MetricStorage, qry string, start, end time.Time
 		}
 
 		solver.args = append(solver.args, step/time.Second)
-		solver.args = append(solver.args, step/time.Second)
+		solver.args = append(solver.args, step/time.Second+0.0) // TODO: fix the bug, see TestDoQuery for more details.
 		solver.args = append(solver.args, tsids)
 		solver.args = append(solver.args, start.Unix())
 		solver.args = append(solver.args, end.Unix())
 
+		if err = solver.DoQuery(storage.(*store.DefaultMetricStorage)); err != nil {
+			return "", err
+		}
 		//storage.(*store.DefaultMetricStorage).DB.Query(qps_pattern, args)
 		return sql, nil
 	}
