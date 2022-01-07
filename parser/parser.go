@@ -18,14 +18,14 @@ func NewRangeQuery(storage store.MetricStorage, qry string, start, end time.Time
 }
 
 func NewInstantQuery(storage store.MetricStorage, qry string, time time.Time) (sql string, err error) {
+	log.Info("", zap.Any("qry",  qry))
+
 	expr, err := promql.ParseExpr(qry)
 
 	if err != nil {
 		log.Warn("parse promql failed", zap.Error(err))
 		return "", err
 	}
-
-	log.Info("", zap.Any("expr",  expr))
 
 	sql, err = buildSQLForInstantQuery(expr, time)
 	if err != nil {
@@ -46,6 +46,12 @@ func buildSQLForInstantQuery(expr promql.Expr, time time.Time) (sql string, err 
 		return buildCall(x, time)
 	case *promql.AggregateExpr:
 		return buildAggregateExpr(x, time)
+	case *promql.BinaryExpr:
+		return buildBinaryExpr(x, time)
+	case *promql.ParenExpr:
+		return buildSQLForInstantQuery(x.Expr, time)
+	case *promql.UnaryExpr:
+		return buildUnaryExpr(x, time)
 	}
 
 	return "", errors.Errorf("unkown ast node %T", expr)
@@ -67,6 +73,10 @@ func buildCall(call *promql.Call, time time.Time) (sql string, err error) {
 		return buildFunctionHistogramQuantile(call, time)
 	case "irate":
 		return buildFunctionIRate(call, time)
+	case "delta":
+		return buildFunctionDelta(call, time)
+	case "increase":
+		return buildFunctionIncrease(call, time)
 	}
 
 	return "", errors.Errorf("unkown function %v", call.Func.Name)
@@ -74,31 +84,65 @@ func buildCall(call *promql.Call, time time.Time) (sql string, err error) {
 
 func buildAggregateExpr(agg *promql.AggregateExpr, time time.Time) (sql string, err error) {
 	switch agg.Op {
+	case 40:
+		return buildAggregationAgg(agg, time)
+	case 41:
+		return buildAggregationCount(agg, time)
 	case 42: //promql.itemSum:
 		return buildAggregationSum(agg, time)
-	//case "histogram_quantile":
-	//	return buildFunctionRate(call, time)
+	case 43:
+		return buildAggregationMin(agg, time)
+	case 44:
+		return buildAggregationMax(agg, time)
+	case 47:
+		return buildAggregationTopK(agg, time)
 	}
 
 	return "", errors.Errorf("unkown agg function %v", agg.Op)
-
 }
 
-func buildAggregationSum(agg *promql.AggregateExpr, time time.Time) (sql string, err error) {
-	return
+func buildBinaryExpr(bin *promql.BinaryExpr, time time.Time) (sql string, err error) {
+	switch bin.Op {
+	case 21:
+		return buildBinaryOperatorSUB(bin, time)
+	case 22:
+		return buildBinaryOperatorADD(bin, time)
+	case 23:
+		return buildBinaryOperatorMUL(bin, time)
+	case 24:
+		return buildBinaryOperatorMOD(bin, time)
+	case 25:
+		return buildBinaryOperatorDIV(bin, time)
+	case 26:
+		return buildBinaryOperatorLAND(bin, time)
+	case 27:
+		return buildBinaryOperatorLOR(bin, time)
+	case 28:
+		return buildBinaryOperatorLUnless(bin, time)
+	case 29:
+		return buildBinaryOperatorEQL(bin, time)
+	case 30:
+		return buildBinaryOperatorNEQ(bin, time)
+	case 31:
+		return buildBinaryOperatorLTE(bin, time)
+	case 32:
+		return buildBinaryOperatorLSS(bin, time)
+	case 33:
+		return buildBinaryOperatorGTE(bin, time)
+	case 34:
+		return buildBinaryOperatorGTR(bin, time)
+	}
+
+	return "", errors.Errorf("unkown binary operator %v", bin.Op)
 }
 
 
-func buildFunctionRate(call *promql.Call, time time.Time) (sql string, err error) {
-	return
-}
+func buildUnaryExpr(unary *promql.UnaryExpr, time time.Time) (sql string, err error) {
+	switch unary.Op {
+	case 21: // neg
+		return
+	}
 
-func buildFunctionIRate(call *promql.Call, time time.Time) (sql string, err error) {
-	return
-}
-
-
-func buildFunctionHistogramQuantile(call *promql.Call, time time.Time) (sql string, err error) {
-	return
+	return "", errors.Errorf("unkown unary operator %v", unary.Op)
 }
 

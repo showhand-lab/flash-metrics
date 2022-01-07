@@ -2,10 +2,12 @@ package parser
 
 import (
 	"bufio"
+	"fmt"
+	"github.com/pingcap/log"
 	"go.uber.org/zap"
 	"io"
-	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,17 +25,26 @@ func TestQueryParse(t *testing.T) {
 	br := bufio.NewReader(fi)
 
 	cnt := 0
+	skipped := 0
 
 	for {
 		raw, _, err := br.ReadLine()
 		if err == io.EOF {
 			break
 		}
+		line := string(raw)
 
-		_, err = NewInstantQuery(nil, string(raw), time.Now())
+		if strings.HasPrefix(line, "#") || line == "" {
+			log.Info("skip promql" + line)
+			skipped++
+			continue
+		}
+
+		_, err = NewInstantQuery(nil, line, time.Now())
 		if err != nil {
 			t.Fatalf("already pass %d promqls", cnt)
 		}
 		cnt++
 	}
+	fmt.Printf("well done, %v promql passed, %v promql skipped", cnt, skipped)
 }
