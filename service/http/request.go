@@ -147,7 +147,7 @@ func DefaultHandler(w http.ResponseWriter, r *http.Request) {
 		log.Debug("", zap.String("key", key), zap.Strings("value", value))
 	}
 
-	w.WriteHeader(http.StatusNotFound)
+	w.WriteHeader(http.StatusOK)
 }
 
 func respond(w http.ResponseWriter, data interface{}) {

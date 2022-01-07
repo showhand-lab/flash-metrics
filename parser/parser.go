@@ -14,20 +14,28 @@ func NewRangeQuery(storage store.MetricStorage, qry string, start, end time.Time
 	log.Info("", zap.Any("qry",  qry))
 
 	expr, err := promql.ParseExpr(qry)
-
 	if err != nil {
 		log.Warn("parse promql failed", zap.Error(err))
 		return "", err
 	}
 
-	sql, err = buildSQLForInstantQuery(expr, start)
-	if err != nil {
-		log.Warn("build sql failed", zap.Error(err))
-		return sql, err
+	if solver := tryMatchQPSPattern(expr); solver != nil {
+		tsids, err := solver.GetTsIDs(storage.(*store.DefaultMetricStorage))
+		if err != nil {
+			return "", err
+		}
+
+		solver.args = append(solver.args, step/time.Second)
+		solver.args = append(solver.args, step/time.Second)
+		solver.args = append(solver.args, tsids)
+		solver.args = append(solver.args, start.Unix())
+		solver.args = append(solver.args, end.Unix())
+
+		//storage.(*store.DefaultMetricStorage).DB.Query(qps_pattern, args)
+		return sql, nil
 	}
 
-	log.Info("build success", zap.String("sql", sql))
-
+	log.Warn("no promql pattern matched!")
 	return "", nil
 }
 

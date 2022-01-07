@@ -16,11 +16,11 @@ var (
 type DefaultMetricStorage struct {
 	*metas.DefaultMetaStorage
 
-	db *sql.DB
+	DB *sql.DB
 }
 
 func NewDefaultMetricStorage(db *sql.DB) *DefaultMetricStorage {
-	return &DefaultMetricStorage{DefaultMetaStorage: metas.NewDefaultMetaStorage(db), db: db}
+	return &DefaultMetricStorage{DefaultMetaStorage: metas.NewDefaultMetaStorage(db), DB: db}
 }
 
 var _ MetricStorage = &DefaultMetricStorage{}
@@ -140,7 +140,7 @@ WHERE
 	*args = append(*args, time.Unix(start/1000, (start%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
 	*args = append(*args, time.Unix(end/1000, (end%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
 
-	rows, err := d.db.Query(sb.String(), *args...)
+	rows, err := d.DB.Query(sb.String(), *args...)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ func (d *DefaultMetricStorage) insertIndex(timeSeries TimeSeries, m *metas.Meta)
 		sb.WriteString(", ?")
 	}
 	sb.WriteString(");")
-	_, err := d.db.Exec(sb.String(), *args...)
+	_, err := d.DB.Exec(sb.String(), *args...)
 	return err
 }
 
@@ -233,7 +233,7 @@ func (d *DefaultMetricStorage) getTSID(timeSeries TimeSeries, m *metas.Meta) (in
 		*args = append(*args, label.Value)
 	}
 	sb.WriteByte(';')
-	row := d.db.QueryRow(sb.String(), *args...)
+	row := d.DB.QueryRow(sb.String(), *args...)
 	var res int64
 	if err := row.Scan(&res); err != nil {
 		return 0, err
@@ -262,7 +262,7 @@ func (d *DefaultMetricStorage) insertUpdatedDate(tsid int64, timeSeries TimeSeri
 		*args = append(*args, tsid)
 		*args = append(*args, d)
 	}
-	_, err := d.db.Exec(sb.String(), *args...)
+	_, err := d.DB.Exec(sb.String(), *args...)
 	return err
 }
 
@@ -283,6 +283,6 @@ func (d *DefaultMetricStorage) insertData(tsid int64, timeSeries TimeSeries) err
 		*args = append(*args, sample.Value)
 	}
 
-	_, err := d.db.Exec(sb.String(), *args...)
+	_, err := d.DB.Exec(sb.String(), *args...)
 	return err
 }
