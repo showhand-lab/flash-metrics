@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"github.com/pingcap/log"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -14,10 +15,10 @@ import (
 
 const qpsPattern =
 `
-select tsid, (unix_timestamp(ts)-unix_timestamp(ts)%?)*1000 tsmod, (max(v)-min(v))/? rate_v
+select tsid, (unix_timestamp(ts)-unix_timestamp(ts)mod %v)*1000 tsmod, (max(v)-min(v))/%v
 from flash_metrics_data
-where tsid in (?)
-and unix_timestamp(ts) >= ? and unix_timestamp(ts) <= ?
+where tsid in (%v)
+and unix_timestamp(ts) >= %v and unix_timestamp(ts) <= %v
 group by tsid, tsmod
 order by tsmod
 `
@@ -163,7 +164,8 @@ func (solver *QPSSolver) updateResultLabel(tsid int, lbs labels.Labels) {
 }
 
 func (solver *QPSSolver) ExecuteQuery(storage *store.DefaultMetricStorage) (err error) {
-	rows, err := storage.DB.Query(qpsPattern, solver.args...)
+	sql := fmt.Sprintf(qpsPattern, solver.args...)
+	rows, err := storage.DB.Query(sql)
 	if err != nil {
 		return err
 	}
