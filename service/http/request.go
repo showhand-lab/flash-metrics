@@ -32,7 +32,6 @@ type Response struct {
 	Warnings  []string    `json:"warnings,omitempty"`
 }
 
-
 func parseTime(s string) (time.Time, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {
 		s, ns := math.Modf(t)
@@ -165,7 +164,7 @@ func respond(w http.ResponseWriter, data interface{}) {
 		Status: "success",
 		Data:   data,
 	})
-	log.Debug("",zap.String("json", string(b)))
+	log.Debug("", zap.String("json", string(b)))
 
 	if err != nil {
 		log.Warn("error marshaling json response", zap.Error(err))

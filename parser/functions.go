@@ -24,5 +24,3 @@ func buildFunctionDelta(call *promql.Call, time time.Time) (sql string, err erro
 func buildFunctionIncrease(call *promql.Call, time time.Time) (sql string, err error) {
 	return
 }
-
-

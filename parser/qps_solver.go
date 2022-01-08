@@ -14,8 +14,7 @@ import (
 	"strings"
 )
 
-const qpsPattern =
-`
+const qpsPattern = `
 select tsid, (unix_timestamp(ts)-unix_timestamp(ts)mod %v)*1000 tsmod, (max(v)-min(v))/%v
 from flash_metrics_data
 where tsid in (%v)
@@ -25,14 +24,14 @@ order by tsmod
 `
 
 type QPSSolver struct {
-	groupByNames []string
-	metricName string
+	groupByNames  []string
+	metricName    string
 	labelMatchers []*labels.Matcher
 
 	// step, step, tsids, start, end
 	args []interface{}
 
-	result promql.Matrix
+	result            promql.Matrix
 	matrixIndexHelper map[int]int // key means tsid, value means index of result.
 }
 
@@ -50,9 +49,9 @@ func tryMatchQPSPattern(expr promql.Expr) *QPSSolver {
 		return nil
 	}
 
-	return &QPSSolver {
-		groupByNames: agg.Grouping,
-		metricName: matrix.Name,
+	return &QPSSolver{
+		groupByNames:  agg.Grouping,
+		metricName:    matrix.Name,
 		labelMatchers: matrix.LabelMatchers,
 	}
 }
@@ -68,7 +67,7 @@ func (solver *QPSSolver) GetTsIDs(storage *store.DefaultMetricStorage) (tsids_st
 	var sb strings.Builder
 
 	sb.WriteString(
-`
+		`
 select _tidb_rowid
 `)
 	groupByCount := 0
@@ -141,7 +140,7 @@ where metric_name = ?
 		var lbs labels.Labels
 		for index, str := range row[1:] {
 			lbs = append(lbs, labels.Label{
-				Name: solver.groupByNames[index],
+				Name:  solver.groupByNames[index],
 				Value: *str.(*string)})
 		}
 		solver.updateResultLabel(tsid, lbs)
@@ -177,7 +176,7 @@ func (solver *QPSSolver) ExecuteQuery(storage *store.DefaultMetricStorage) (err 
 		var tsmod float64
 		var value float64
 		if err = rows.Scan(&tsid, &tsmod, &value); err != nil {
-			log.Warn("",zap.Error(err))
+			log.Warn("", zap.Error(err))
 			return err
 		}
 

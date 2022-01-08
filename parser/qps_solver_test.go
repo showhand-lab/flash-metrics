@@ -22,8 +22,8 @@ func TestQPSSolver(t *testing.T) {
 	end, err := time.ParseInLocation("2006-01-02 15:04:05", "2022-01-08 05:07:30 +0800", loc)
 
 	if _, err = NewRangeQuery(metricStorage, "sum(rate(tiflash_coprocessor_request_count{tidb_cluster=\"\", instance=~\"()\"}[1m])) by (type)",
-			start, end, 15000000000); err != nil {
-		log.Error("",zap.Error(err))
+		start, end, 15000000000); err != nil {
+		log.Error("", zap.Error(err))
 		t.Fail()
 	}
 
@@ -37,15 +37,15 @@ func TestDoQuery(t *testing.T) {
 	metricStorage := store.NewDefaultMetricStorage(db)
 
 	solver := &QPSSolver{
-		groupByNames: []string{"type"},
-		metricName: "tiflash_coprocessor_request_count",
+		groupByNames:  []string{"type"},
+		metricName:    "tiflash_coprocessor_request_count",
 		labelMatchers: nil,
-		args: []interface{}{15.0, 15.0, "101,105,99,107,103,104,100,98,102,106", 1641586050, 1641589650},
+		args:          []interface{}{15.0, 15.0, "101,105,99,107,103,104,100,98,102,106", 1641586050, 1641589650},
 	}
 
 	_, err = db.Query("select tsid, ts-ts%15 tsmod, (max(v)-min(v))/15 rate_v from flash_metrics_data where flash_metrics_data.tsid in (101,105,99,107,103,104,100,98,102,106) and ts >= 1641586050 and ts <= 1641589650 group by tsid, tsmod")
 	if err != nil {
-		log.Error("",zap.Error(err))
+		log.Error("", zap.Error(err))
 		t.Fail()
 	}
 
@@ -70,9 +70,8 @@ func TestDoQuery(t *testing.T) {
 
 	db.Exec("use test")
 	if err = solver.ExecuteQuery(metricStorage); err != nil {
-		log.Error("",zap.Error(err))
+		log.Error("", zap.Error(err))
 		t.Fail()
 	}
-
 
 }

@@ -11,7 +11,7 @@ import (
 )
 
 func NewRangeQuery(storage store.MetricStorage, qry string, start, end time.Time, step time.Duration) (result promql.Value, err error) {
-	log.Info("", zap.Any("qry",  qry))
+	log.Info("", zap.Any("qry", qry))
 
 	expr, err := promql.ParseExpr(qry)
 	if err != nil {
@@ -44,7 +44,7 @@ func NewRangeQuery(storage store.MetricStorage, qry string, start, end time.Time
 }
 
 func NewInstantQuery(storage store.MetricStorage, qry string, time time.Time) (sql string, err error) {
-	log.Info("", zap.Any("qry",  qry))
+	log.Info("", zap.Any("qry", qry))
 
 	expr, err := promql.ParseExpr(qry)
 
@@ -172,7 +172,6 @@ func buildBinaryExpr(bin *promql.BinaryExpr, time time.Time) (sql string, err er
 	return "", errors.Errorf("unkown binary operator %v", bin.Op)
 }
 
-
 func buildUnaryExpr(unary *promql.UnaryExpr, time time.Time) (sql string, err error) {
 	switch unary.Op {
 	case 21: // neg
@@ -181,4 +180,3 @@ func buildUnaryExpr(unary *promql.UnaryExpr, time time.Time) (sql string, err er
 
 	return "", errors.Errorf("unkown unary operator %v", unary.Op)
 }
-
