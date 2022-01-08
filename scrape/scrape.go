@@ -9,6 +9,7 @@ import (
 
 	"github.com/showhand-lab/flash-metrics-storage/config"
 	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
 
 	"github.com/pingcap/log"
 	io_prometheus_client "github.com/prometheus/client_model/go"
@@ -38,17 +39,10 @@ func Stop() {
 	wg.Wait()
 }
 
-func storeTimeSeries(_ context.Context, metricStore store.MetricStorage, timeSeries []store.TimeSeries) {
-	for _, tseries := range timeSeries {
-		// TODO: 使用 batch store
-		log.Debug("time series",
-			zap.String("name", tseries.Name),
-			zap.Int64("sample timestamp", tseries.Samples[0].TimestampMs),
-			zap.Float64("sample value", tseries.Samples[0].Value))
-		err := metricStore.Store(tseries)
-		if err != nil {
-			return
-		}
+func storeTimeSeries(_ context.Context, metricStore store.MetricStorage, timeSeries []*model.TimeSeries) {
+
+	if err := metricStore.BatchStore(context.Background(), timeSeries); err != nil {
+		log.Warn("failed to batch store time series", zap.Error(err))
 	}
 }
 
@@ -61,14 +55,14 @@ func scrapeLoop(ctx context.Context, scrapeConfig *config.ScrapeConfig, metricSt
 			for _, staticConfig := range scrapeConfig.StaticConfigs {
 				for _, targetInstance := range staticConfig.Targets {
 					wg.Add(1)
-					defaultLabels := []store.Label{
+					defaultLabels := []model.Label{
 						{Name: "job", Value: scrapeConfig.JobName},
 						{Name: "instance", Value: targetInstance},
 					}
 					log.Info("start scraping",
 						zap.String("job", scrapeConfig.JobName),
 						zap.String("instance", targetInstance))
-					go func(targetInstance string, defaultLabels *[]store.Label) {
+					go func(targetInstance string, defaultLabels *[]model.Label) {
 						ctx, cancel := context.WithTimeout(ctx, scrapeConfig.ScrapeTimeout)
 						defer func() {
 							cancel()
@@ -103,7 +97,7 @@ func scrapeTarget(
 	ctx context.Context,
 	scrapeConfig *config.ScrapeConfig,
 	targetInstance string,
-	defaultLabels *[]store.Label) (err error, timeSeries []store.TimeSeries) {
+	defaultLabels *[]model.Label) (err error, timeSeries []*model.TimeSeries) {
 
 	now := time.Now()
 	defer func() {
@@ -117,24 +111,24 @@ func scrapeTarget(
 		if err != nil {
 			isInstanceHealthy = 0
 		}
-		timeSeries = append(timeSeries, store.TimeSeries{
+		timeSeries = append(timeSeries, &model.TimeSeries{
 			Name:   "up",
 			Labels: *defaultLabels,
-			Samples: []store.Sample{
+			Samples: []model.Sample{
 				{TimestampMs: scrapeFinishTimeMs, Value: isInstanceHealthy},
 			},
 		})
-		timeSeries = append(timeSeries, store.TimeSeries{
+		timeSeries = append(timeSeries, &model.TimeSeries{
 			Name:   "scrape_duration_seconds",
 			Labels: *defaultLabels,
-			Samples: []store.Sample{
+			Samples: []model.Sample{
 				{TimestampMs: scrapeFinishTimeMs, Value: float64(scrapeFinishTime.Second() - now.Second())},
 			},
 		})
-		timeSeries = append(timeSeries, store.TimeSeries{
+		timeSeries = append(timeSeries, &model.TimeSeries{
 			Name:   "scrape_samples_scraped",
 			Labels: *defaultLabels,
-			Samples: []store.Sample{
+			Samples: []model.Sample{
 				{TimestampMs: scrapeFinishTimeMs, Value: float64(scrapedSampleCount)},
 			},
 		})
@@ -166,11 +160,11 @@ func scrapeTarget(
 	for name, metricFamily := range metricFamilyMap {
 		// TODO: support extra labels from scrape configs
 		for _, metric := range metricFamily.GetMetric() {
-			labels := make([]store.Label, len(*defaultLabels))
+			labels := make([]model.Label, len(*defaultLabels))
 			copy(labels, *defaultLabels)
 
 			for _, l := range metric.GetLabel() {
-				labels = append(labels, store.Label{
+				labels = append(labels, model.Label{
 					Name:  *l.Name,
 					Value: *l.Value,
 				})
@@ -180,30 +174,30 @@ func scrapeTarget(
 			switch metricType {
 			case io_prometheus_client.MetricType_COUNTER:
 				value = metric.Counter.GetValue()
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name,
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       value,
 					}},
 				})
 			case io_prometheus_client.MetricType_GAUGE:
 				value = metric.Gauge.GetValue()
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name,
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       value,
 					}},
 				})
 			case io_prometheus_client.MetricType_UNTYPED:
 				value = metric.Untyped.GetValue()
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name,
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       value,
 					}},
@@ -211,31 +205,31 @@ func scrapeTarget(
 			case io_prometheus_client.MetricType_SUMMARY:
 				summary := metric.GetSummary()
 				for _, quantile := range summary.GetQuantile() {
-					quantileLabels := append(labels, store.Label{
+					quantileLabels := append(labels, model.Label{
 						Name:  "quantile",
 						Value: fmt.Sprintf("%v", quantile.GetQuantile()),
 					})
-					timeSeries = append(timeSeries, store.TimeSeries{
+					timeSeries = append(timeSeries, &model.TimeSeries{
 						Name:   name,
 						Labels: quantileLabels,
-						Samples: []store.Sample{{
+						Samples: []model.Sample{{
 							TimestampMs: nowMs,
 							Value:       quantile.GetValue(),
 						}},
 					})
 				}
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name + "_sum",
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       *summary.SampleSum,
 					}},
 				})
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name + "_count",
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       float64(*summary.SampleCount),
 					}},
@@ -243,31 +237,32 @@ func scrapeTarget(
 			case io_prometheus_client.MetricType_HISTOGRAM:
 				histogram := metric.GetHistogram()
 				for _, bucket := range histogram.GetBucket() {
-					histogramLabels := append(labels, store.Label{
+					histogramLabels := append(labels, model.Label{
 						Name:  "le",
 						Value: fmt.Sprintf("%v", bucket.GetUpperBound()),
 					})
-					timeSeries = append(timeSeries, store.TimeSeries{
-						Name:   name + "_bucket",
+					timeSeries = append(timeSeries, &model.TimeSeries{
+						Name:   name,
 						Labels: histogramLabels,
-						Samples: []store.Sample{{
+						Samples: []model.Sample{{
 							TimestampMs: nowMs,
 							Value:       float64(*bucket.CumulativeCount),
 						}},
 					})
 				}
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
+
 					Name:   name + "_sum",
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       *histogram.SampleSum,
 					}},
 				})
-				timeSeries = append(timeSeries, store.TimeSeries{
+				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name + "_count",
 					Labels: labels,
-					Samples: []store.Sample{{
+					Samples: []model.Sample{{
 						TimestampMs: nowMs,
 						Value:       float64(*histogram.SampleCount),
 					}},

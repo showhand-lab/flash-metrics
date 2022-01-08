@@ -1,16 +1,23 @@
 package remote
 
 import (
+	"context"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
 
 	"github.com/golang/snappy"
 	"github.com/pingcap/log"
 	"github.com/prometheus/prometheus/prompb"
 	"go.uber.org/zap"
+)
+
+const (
+	defaultReadTimeout = 1 * time.Minute
 )
 
 var (
@@ -19,6 +26,9 @@ var (
 
 func ReadHandler(storage store.MetricStorage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(context.Background(), defaultReadTimeout)
+		defer cancel()
+
 		req, err := decodeReadRequest(r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -31,7 +41,7 @@ func ReadHandler(storage store.MetricStorage) http.HandlerFunc {
 	OUTER:
 		for _, query := range req.Queries {
 			var metricName string
-			var matcher []store.Matcher
+			var matcher []model.Matcher
 
 			for _, qMatcher := range query.Matchers {
 				if qMatcher.Name == "__name__" {
@@ -42,7 +52,7 @@ func ReadHandler(storage store.MetricStorage) http.HandlerFunc {
 						continue OUTER
 					}
 				} else {
-					matcher = append(matcher, store.Matcher{
+					matcher = append(matcher, model.Matcher{
 						LabelName:  qMatcher.Name,
 						LabelValue: qMatcher.Value,
 						IsRE:       qMatcher.Type == prompb.LabelMatcher_NRE || qMatcher.Type == prompb.LabelMatcher_RE,
@@ -57,7 +67,7 @@ func ReadHandler(storage store.MetricStorage) http.HandlerFunc {
 				continue
 			}
 
-			ts, err := storage.Query(query.StartTimestampMs, query.EndTimestampMs, metricName, matcher)
+			ts, err := storage.Query(ctx, query.StartTimestampMs, query.EndTimestampMs, metricName, matcher)
 			if err != nil {
 				log.Warn("failed to query", zap.Any("query", query), zap.Error(err))
 				*queryResults = append(*queryResults, nil)

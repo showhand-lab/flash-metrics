@@ -47,7 +47,11 @@ func SetupDB(dbName string) (*sql.DB, error) {
 		}
 	}
 
-	return db, nil
+	if err = db.Close(); err != nil {
+		return nil, err
+	}
+
+	return sql.Open("mysql", fmt.Sprintf("root@(127.0.0.1:4000)/%s", dbName))
 }
 
 func TearDownDB(dbName string, db *sql.DB) error {

@@ -1,29 +1,14 @@
 package store
 
-type TimeSeries struct {
-	Name    string
-	Labels  []Label
-	Samples []Sample
-}
+import (
+	"context"
 
-type Label struct {
-	Name  string
-	Value string
-}
-
-type Sample struct {
-	TimestampMs int64
-	Value       float64
-}
-
-type Matcher struct {
-	LabelName  string
-	LabelValue string
-	IsRE       bool
-	IsNegative bool
-}
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
+)
 
 type MetricStorage interface {
-	Store(timeSeries TimeSeries) error
-	Query(startMs, endMs int64, metricsName string, matchers []Matcher) ([]TimeSeries, error)
+	Store(ctx context.Context, timeSeries model.TimeSeries) error
+	BatchStore(ctx context.Context, timeSeries []*model.TimeSeries) error
+	Query(ctx context.Context, startMs, endMs int64, metricsName string, matchers []model.Matcher) ([]model.TimeSeries, error)
+	Close()
 }
