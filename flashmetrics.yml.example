@@ -10,7 +10,7 @@ logs:
   # log_file: flashmetrics.log
 
 scrape_configs:
-  - job_name: default job
+  - job_name: tidb
     scrape_interval: 15s
     scrape_timeout: 10s
     metrics_path: /metrics

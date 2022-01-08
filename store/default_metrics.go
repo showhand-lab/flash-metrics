@@ -434,7 +434,7 @@ func (d *DefaultMetricStorage) insertData(ctx context.Context, tsid int64, timeS
 	sb.WriteString("INSERT INTO flash_metrics_data (tsid, ts, v) VALUES")
 
 	for _, sample := range timeSeries.Samples {
-		if math.IsNaN(sample.Value) {
+		if math.IsNaN(sample.Value) || math.IsInf(sample.Value, 1) || math.IsInf(sample.Value, -1) {
 			continue
 		}
 		if writeCount != 0 {
