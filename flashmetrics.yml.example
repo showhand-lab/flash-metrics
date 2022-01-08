@@ -6,13 +6,13 @@ web:
   address: 0.0.0.0:9977
 
 logs:
-  log_level: info
-#  log_file: flashmetrics.log
+  log_level: debug
+  # log_file: flashmetrics.log
 
 scrape_configs:
   - job_name: default job
-    scrape_interval: 10s
-    scrape_timeout: 3s
+    scrape_interval: 15s
+    scrape_timeout: 10s
     metrics_path: /metrics
     scheme: http
     static_configs:

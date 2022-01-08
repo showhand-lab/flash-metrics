@@ -35,12 +35,10 @@ var (
 type DefaultMetricStorage struct {
 	metas.MetaStorage
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-
-	DB *sql.DB
-
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	DB         *sql.DB
 	batchTasks chan batch.Task
 }
 
@@ -361,6 +359,7 @@ func (d *DefaultMetricStorage) insertIndex(ctx context.Context, timeSeries model
 		sb.WriteString(", ?")
 	}
 	sb.WriteString(");")
+
 	_, err := d.DB.ExecContext(ctx, sb.String(), *args...)
 	return err
 }
@@ -420,6 +419,7 @@ func (d *DefaultMetricStorage) insertUpdatedDate(ctx context.Context, tsid int64
 	if writeCount == 0 {
 		return nil
 	}
+
 	_, err := d.DB.ExecContext(ctx, sb.String(), *args...)
 	return err
 }

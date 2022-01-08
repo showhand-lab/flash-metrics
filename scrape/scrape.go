@@ -39,6 +39,12 @@ func Stop() {
 	wg.Wait()
 }
 
+func storeTimeSeries(ctx context.Context, metricStore store.MetricStorage, timeSeries []*model.TimeSeries) {
+	if err := metricStore.BatchStore(ctx, timeSeries); err != nil {
+		log.Warn("failed to batch store time series", zap.Error(err))
+	}
+}
+
 func scrapeLoop(ctx context.Context, scrapeConfig *config.ScrapeConfig, metricStore store.MetricStorage) {
 	ticker := time.NewTicker(scrapeConfig.ScrapeInterval)
 	defer ticker.Stop()
@@ -46,21 +52,36 @@ func scrapeLoop(ctx context.Context, scrapeConfig *config.ScrapeConfig, metricSt
 		select {
 		case <-ticker.C:
 			for _, staticConfig := range scrapeConfig.StaticConfigs {
-				for _, target := range staticConfig.Targets {
+				for _, targetInstance := range staticConfig.Targets {
 					wg.Add(1)
-					go func(target string) {
+					defaultLabels := []model.Label{
+						{Name: "job", Value: scrapeConfig.JobName},
+						{Name: "instance", Value: targetInstance},
+					}
+					log.Info("start scraping",
+						zap.String("job", scrapeConfig.JobName),
+						zap.String("instance", targetInstance))
+					go func(targetInstance string, defaultLabels *[]model.Label) {
 						ctx, cancel := context.WithTimeout(ctx, scrapeConfig.ScrapeTimeout)
 						defer func() {
 							cancel()
 							wg.Done()
 						}()
-						scrapeTarget(
+
+						err, timeSeries := scrapeTarget(
 							ctx,
-							&http.Client{Timeout: scrapeConfig.ScrapeTimeout},
-							fmt.Sprintf("%s://%s%s", scrapeConfig.Scheme, target, scrapeConfig.MetricsPath),
-							metricStore,
+							scrapeConfig,
+							targetInstance,
+							defaultLabels,
 						)
-					}(target)
+
+						if err != nil {
+							log.Error("fail to scrape", zap.Error(err))
+							return
+						}
+						storeTimeSeries(ctx, metricStore, timeSeries)
+
+					}(targetInstance, &defaultLabels)
 				}
 			}
 		case <-ctx.Done():
@@ -71,8 +92,49 @@ func scrapeLoop(ctx context.Context, scrapeConfig *config.ScrapeConfig, metricSt
 
 // TODO: add test cases
 // TODO: refactor duplicated snippets
-// TODO: store metric type, not just time series
-func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string, metricStore store.MetricStorage) {
+func scrapeTarget(
+	ctx context.Context,
+	scrapeConfig *config.ScrapeConfig,
+	targetInstance string,
+	defaultLabels *[]model.Label) (err error, timeSeries []*model.TimeSeries) {
+
+	now := time.Now()
+	defer func() {
+		// Add default time series at the of scraping this target
+		// https://prometheus.io/docs/concepts/jobs_instances/#automatically-generated-labels-and-time-series
+		isInstanceHealthy := 1.0
+		scrapeFinishTime := time.Now()
+		scrapeFinishTimeMs := scrapeFinishTime.UnixNano() / int64(time.Millisecond)
+		scrapedSampleCount := len(timeSeries)
+
+		if err != nil {
+			isInstanceHealthy = 0
+		}
+		timeSeries = append(timeSeries, &model.TimeSeries{
+			Name:   "up",
+			Labels: *defaultLabels,
+			Samples: []model.Sample{
+				{TimestampMs: scrapeFinishTimeMs, Value: isInstanceHealthy},
+			},
+		})
+		timeSeries = append(timeSeries, &model.TimeSeries{
+			Name:   "scrape_duration_seconds",
+			Labels: *defaultLabels,
+			Samples: []model.Sample{
+				{TimestampMs: scrapeFinishTimeMs, Value: float64(scrapeFinishTime.Second() - now.Second())},
+			},
+		})
+		timeSeries = append(timeSeries, &model.TimeSeries{
+			Name:   "scrape_samples_scraped",
+			Labels: *defaultLabels,
+			Samples: []model.Sample{
+				{TimestampMs: scrapeFinishTimeMs, Value: float64(scrapedSampleCount)},
+			},
+		})
+	}()
+
+	targetUrl := fmt.Sprintf("%s://%s%s", scrapeConfig.Scheme, targetInstance, scrapeConfig.MetricsPath)
+	httpClient := &http.Client{Timeout: scrapeConfig.ScrapeTimeout}
 	req, err := http.NewRequestWithContext(ctx, "GET", targetUrl, nil)
 	if err != nil {
 		log.Warn("failed to create request", zap.Error(err))
@@ -93,13 +155,13 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 		return
 	}
 
-	timeSeries := make([]*model.TimeSeries, 0)
-	nowMs := time.Now().UnixNano() / int64(time.Millisecond)
+	nowMs := now.UnixNano() / int64(time.Millisecond)
 	for name, metricFamily := range metricFamilyMap {
-
 		// TODO: support extra labels from scrape configs
 		for _, metric := range metricFamily.GetMetric() {
-			labels := make([]model.Label, 0)
+			labels := make([]model.Label, len(*defaultLabels))
+			copy(labels, *defaultLabels)
+
 			for _, l := range metric.GetLabel() {
 				labels = append(labels, model.Label{
 					Name:  *l.Name,
@@ -107,7 +169,8 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 				})
 			}
 			var value float64
-			switch metricFamily.GetType() {
+			metricType := metricFamily.GetType()
+			switch metricType {
 			case io_prometheus_client.MetricType_COUNTER:
 				value = metric.Counter.GetValue()
 				timeSeries = append(timeSeries, &model.TimeSeries{
@@ -143,7 +206,7 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 				for _, quantile := range summary.GetQuantile() {
 					quantileLabels := append(labels, model.Label{
 						Name:  "quantile",
-						Value: fmt.Sprintf("%f", quantile.GetQuantile()),
+						Value: fmt.Sprintf("%v", quantile.GetQuantile()),
 					})
 					timeSeries = append(timeSeries, &model.TimeSeries{
 						Name:   name,
@@ -175,10 +238,10 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 				for _, bucket := range histogram.GetBucket() {
 					histogramLabels := append(labels, model.Label{
 						Name:  "le",
-						Value: fmt.Sprintf("%f", bucket.GetUpperBound()),
+						Value: fmt.Sprintf("%v", bucket.GetUpperBound()),
 					})
 					timeSeries = append(timeSeries, &model.TimeSeries{
-						Name:   name,
+						Name:   name + "_bucket",
 						Labels: histogramLabels,
 						Samples: []model.Sample{{
 							TimestampMs: nowMs,
@@ -186,7 +249,6 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 						}},
 					})
 				}
-
 				timeSeries = append(timeSeries, &model.TimeSeries{
 					Name:   name + "_sum",
 					Labels: labels,
@@ -204,12 +266,9 @@ func scrapeTarget(ctx context.Context, httpClient *http.Client, targetUrl string
 					}},
 				})
 			default:
-				log.Fatal("Unexpected metric type", zap.String("type", metricFamily.GetType().String()))
+				log.Fatal("Unexpected metric type", zap.String("type", metricType.String()))
 			}
 		}
 	}
-
-	if err = metricStore.BatchStore(context.Background(), timeSeries); err != nil {
-		log.Warn("failed to batch store time series", zap.Error(err))
-	}
+	return
 }
