@@ -159,6 +159,7 @@ func main() {
 	defer closeDatabase(db)
 
 	storage := store.NewDefaultMetricStorage(db)
+	defer storage.Close()
 
 	service.Init(flashMetricsConfig, storage)
 	defer service.Stop()

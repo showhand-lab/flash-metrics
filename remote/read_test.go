@@ -2,6 +2,7 @@ package remote_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"net/http"
 	"sort"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/showhand-lab/flash-metrics-storage/remote"
 	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
 	"github.com/showhand-lab/flash-metrics-storage/utils"
 
 	"github.com/golang/snappy"
@@ -38,23 +40,23 @@ func (s *testRemoteReadSuite) SetupSuite() {
 }
 
 func (s *testRemoteReadSuite) TearDownSuite() {
+	s.storage.Close()
 	s.NoError(utils.TearDownDB("test_remote_read", s.db))
 }
 
 func (s *testRemoteReadSuite) TestBasic() {
 	now := time.Now().UnixNano() / int64(time.Millisecond)
 
-	metricStorage := store.NewDefaultMetricStorage(s.db)
-	err := metricStorage.Store(store.TimeSeries{
+	err := s.storage.Store(context.Background(), model.TimeSeries{
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "method",
 			Value: "GET",
 		}, {
 			Name:  "handler",
 			Value: "/messages",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       100.0,
 		}, {
@@ -64,16 +66,16 @@ func (s *testRemoteReadSuite) TestBasic() {
 	})
 	s.NoError(err)
 
-	err = metricStorage.Store(store.TimeSeries{
+	err = s.storage.Store(context.Background(), model.TimeSeries{
 		Name: "api_http_requests_total",
-		Labels: []store.Label{{
+		Labels: []model.Label{{
 			Name:  "method",
 			Value: "POST",
 		}, {
 			Name:  "handler",
 			Value: "/messages",
 		}},
-		Samples: []store.Sample{{
+		Samples: []model.Sample{{
 			TimestampMs: now,
 			Value:       77.0,
 		}},

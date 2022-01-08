@@ -1,6 +1,7 @@
 package metas
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -17,10 +18,10 @@ var (
 )
 
 type DefaultMetaStorage struct {
-	db *sql.DB
+	sync.Mutex
 
-	cacheMu sync.Mutex
-	cache   *simplelru.LRU
+	db    *sql.DB
+	cache *simplelru.LRU
 }
 
 func NewDefaultMetaStorage(db *sql.DB) *DefaultMetaStorage {
@@ -30,32 +31,11 @@ func NewDefaultMetaStorage(db *sql.DB) *DefaultMetaStorage {
 
 var _ MetaStorage = &DefaultMetaStorage{}
 
-func (d *DefaultMetaStorage) QueryMeta(metricName string) (*Meta, error) {
-	if r := d.getMetaFromCache(metricName); r != nil {
-		return r, nil
-	}
+func (d *DefaultMetaStorage) QueryMeta(ctx context.Context, metricName string) (*Meta, error) {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
 
-	rows, err := d.db.Query("SELECT label_name, label_id FROM flash_metrics_meta WHERE metric_name = ?", metricName)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	res := &Meta{
-		MetricName: metricName,
-		Labels:     map[LabelName]LabelID{},
-	}
-	for rows.Next() {
-		var name LabelName
-		var id LabelID
-		// for each row, scan the result into our tag composite object
-		err = rows.Scan(&name, &id)
-		if err != nil {
-			return nil, err
-		}
-		res.Labels[name] = id
-	}
-	return res, nil
+	return d.queryMetaWithoutLock(ctx, metricName)
 }
 
 type LabelPair struct {
@@ -63,8 +43,11 @@ type LabelPair struct {
 	ID   LabelID
 }
 
-func (d *DefaultMetaStorage) StoreMeta(metricName string, labelNames []string) (*Meta, error) {
-	r, err := d.QueryMeta(metricName)
+func (d *DefaultMetaStorage) StoreMeta(ctx context.Context, metricName string, labelNames []string) (*Meta, error) {
+	d.Mutex.Lock()
+	defer d.Mutex.Unlock()
+
+	r, err := d.queryMetaWithoutLock(ctx, metricName)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +74,18 @@ func (d *DefaultMetaStorage) StoreMeta(metricName string, labelNames []string) (
 	}
 
 	if newLabelLen > 0 {
+		newMeta := &Meta{
+			MetricName: r.MetricName,
+			Labels:     map[LabelName]LabelID{},
+		}
+		for n, id := range r.Labels {
+			newMeta.Labels[n] = id
+		}
+		for _, newLabel := range *labels {
+			newMeta.Labels[newLabel.Name] = newLabel.ID
+		}
+		r = newMeta
+
 		args := argSliceP.Get()
 		defer argSliceP.Put(args)
 		for _, newLabel := range *labels {
@@ -106,31 +101,53 @@ func (d *DefaultMetaStorage) StoreMeta(metricName string, labelNames []string) (
 		}
 		sb.WriteByte(';')
 
-		_, err = d.db.Exec(sb.String(), *args...)
+		_, err = d.db.ExecContext(ctx, sb.String(), *args...)
 		if err != nil {
 			return nil, err
 		}
-
-		for _, newLabel := range *labels {
-			r.Labels[newLabel.Name] = newLabel.ID
-		}
 	}
-	d.updateCache(metricName, r)
+	d.updateCacheWithoutLock(metricName, r)
 
 	return r, nil
 }
 
-func (d *DefaultMetaStorage) getMetaFromCache(metricName string) *Meta {
-	d.cacheMu.Lock()
-	defer d.cacheMu.Unlock()
+func (d *DefaultMetaStorage) queryMetaWithoutLock(ctx context.Context, metricName string) (*Meta, error) {
+	if r := d.getMetaFromCacheWithoutLock(metricName); r != nil {
+		return r, nil
+	}
+
+	rows, err := d.db.QueryContext(ctx, "SELECT label_name, label_id FROM flash_metrics_meta WHERE metric_name = ?", metricName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	res := &Meta{
+		MetricName: metricName,
+		Labels:     map[LabelName]LabelID{},
+	}
+	for rows.Next() {
+		var name LabelName
+		var id LabelID
+		// for each row, scan the result into our tag composite object
+		err = rows.Scan(&name, &id)
+		if err != nil {
+			return nil, err
+		}
+		res.Labels[name] = id
+	}
+	d.updateCacheWithoutLock(metricName, res)
+
+	return res, nil
+}
+
+func (d *DefaultMetaStorage) getMetaFromCacheWithoutLock(metricName string) *Meta {
 	if v, ok := d.cache.Get(metricName); ok {
 		return v.(*Meta)
 	}
 	return nil
 }
 
-func (d *DefaultMetaStorage) updateCache(metricName string, meta *Meta) {
-	d.cacheMu.Lock()
+func (d *DefaultMetaStorage) updateCacheWithoutLock(metricName string, meta *Meta) {
 	d.cache.Add(metricName, meta)
-	d.cacheMu.Unlock()
 }

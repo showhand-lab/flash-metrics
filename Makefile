@@ -6,9 +6,9 @@ PACKAGE_DIRECTORIES := $(PACKAGE_LIST) | sed 's|github.com/showhand-lab/flash-me
 FILES     := $$(find $$($(PACKAGE_DIRECTORIES)) -name "*.go")
 FAIL_ON_STDOUT := awk '{ print } END { if (NR > 0) { exit 1 } }'
 
-LDFLAGS += -X "github.com/showhand-lab/flash-metrics-storage/utils/printer.FlashMetricsStorageBuildTS=$(shell date -u '+%Y-%m-%d %H:%M:%S')"
-LDFLAGS += -X "github.com/showhand-lab/flash-metrics-storage/utils/printer.FlashMetricsStorageGitHash=$(shell git rev-parse HEAD)"
-LDFLAGS += -X "github.com/showhand-lab/flash-metrics-storage/utils/printer.FlashMetricsStorageGitBranch=$(shell git rev-parse --abbrev-ref HEAD)"
+LDFLAGS += -X "github.com/showhand-lab/flash-metrics-storage/utils/printer.FlashMetricsBuildTS=$(shell date -u '+%Y-%m-%d %H:%M:%S')"
+LDFLAGS += -X "github.com/showhand-lab/flash-metrics-storage/utils/printer.FlashMetricsGitHash=$(shell git rev-parse HEAD)"
+LDFLAGS += -X "github.com/showhand-lab/flash-metrics-storage/utils/printer.FlashMetricsGitBranch=$(shell git rev-parse --abbrev-ref HEAD)"
 
 GO      := GO111MODULE=on go
 GOBUILD := $(GO) build
