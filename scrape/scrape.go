@@ -39,9 +39,8 @@ func Stop() {
 	wg.Wait()
 }
 
-func storeTimeSeries(_ context.Context, metricStore store.MetricStorage, timeSeries []*model.TimeSeries) {
-
-	if err := metricStore.BatchStore(context.Background(), timeSeries); err != nil {
+func storeTimeSeries(ctx context.Context, metricStore store.MetricStorage, timeSeries []*model.TimeSeries) {
+	if err := metricStore.BatchStore(ctx, timeSeries); err != nil {
 		log.Warn("failed to batch store time series", zap.Error(err))
 	}
 }
@@ -242,7 +241,7 @@ func scrapeTarget(
 						Value: fmt.Sprintf("%v", bucket.GetUpperBound()),
 					})
 					timeSeries = append(timeSeries, &model.TimeSeries{
-						Name:   name,
+						Name:   name + "_bucket",
 						Labels: histogramLabels,
 						Samples: []model.Sample{{
 							TimestampMs: nowMs,
@@ -251,7 +250,6 @@ func scrapeTarget(
 					})
 				}
 				timeSeries = append(timeSeries, &model.TimeSeries{
-
 					Name:   name + "_sum",
 					Labels: labels,
 					Samples: []model.Sample{{

@@ -21,6 +21,12 @@ func ServeHTTP(listener net.Listener, storage store.MetricStorage) {
 	mux.HandleFunc("/write", remote.WriteHandler(storage))
 	mux.HandleFunc("/read", remote.ReadHandler(storage))
 
+	mux.HandleFunc("/api/v1/query", QueryHandler(storage))
+	mux.HandleFunc("/api/v1/query_range", QueryRangeHandler(storage))
+	// mux.HandleFunc("/match", _)
+
+	mux.HandleFunc("/", DefaultHandler)
+
 	httpServer = &http.Server{Handler: mux}
 	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 		log.Warn("failed to serve http service", zap.Error(err))
