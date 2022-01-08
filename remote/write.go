@@ -67,7 +67,7 @@ func WriteHandler(storage store.MetricStorage) http.HandlerFunc {
 				continue
 			}
 			for _, sample := range series.Samples {
-				if math.IsNaN(sample.Value) {
+				if math.IsNaN(sample.Value) || math.IsInf(sample.Value, 1) || math.IsInf(sample.Value, -1) {
 					continue
 				}
 				storeTS.Samples = append(storeTS.Samples, model.Sample{

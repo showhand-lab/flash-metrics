@@ -70,7 +70,7 @@ func (i *InsertSampleWorker) insertSample(ctx context.Context, timeSeries []*Tim
 
 	for _, ts := range timeSeries {
 		for _, sample := range ts.Samples {
-			if math.IsNaN(sample.Value) {
+			if math.IsNaN(sample.Value) || math.IsInf(sample.Value, 1) || math.IsInf(sample.Value, -1) {
 				continue
 			}
 			if writeCount != 0 {
