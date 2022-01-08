@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"github.com/pingcap/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/showhand-lab/flash-metrics-storage/metas"
@@ -74,8 +75,8 @@ select _tidb_rowid
 	for _, groupByName := range solver.groupByNames {
 		labelID, ok := m.Labels[metas.LabelName(groupByName)]
 		if !ok {
-			log.Fatal("group by label not found!", zap.String("label", groupByName))
-			continue
+			log.Error("group by label not found!", zap.String("label", groupByName))
+			return "", errors.Errorf("group by label not found!")
 		}
 		groupByCount++
 		sb.WriteString(", label")

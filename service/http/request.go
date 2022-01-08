@@ -165,7 +165,7 @@ func respond(w http.ResponseWriter, data interface{}) {
 		Status: "success",
 		Data:   data,
 	})
-	log.Info("",zap.String("json", string(b)))
+	log.Debug("",zap.String("json", string(b)))
 
 	if err != nil {
 		log.Warn("error marshaling json response", zap.Error(err))
