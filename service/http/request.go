@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/showhand-lab/flash-metrics-storage/parser"
-	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics/parser"
+	"github.com/showhand-lab/flash-metrics/store"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pingcap/log"

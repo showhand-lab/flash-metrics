@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/showhand-lab/flash-metrics-storage/store/model"
+	"github.com/showhand-lab/flash-metrics/store/model"
 )
 
 type MetricStorage interface {

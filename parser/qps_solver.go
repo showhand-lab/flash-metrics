@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/showhand-lab/flash-metrics-storage/metas"
-	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics/metas"
+	"github.com/showhand-lab/flash-metrics/store"
 
 	"github.com/pingcap/log"
 	"github.com/pkg/errors"

@@ -1,21 +1,21 @@
-PACKAGE_LIST  := go list ./...| grep -E "github.com/showhand-lab/flash-metrics-storage/"
-PACKAGE_LIST_TESTS  := go list ./... | grep -E "github.com/showhand-lab/flash-metrics-storage/"
+PACKAGE_LIST  := go list ./...| grep -E "github.com/showhand-lab/flash-metrics/"
+PACKAGE_LIST_TESTS  := go list ./... | grep -E "github.com/showhand-lab/flash-metrics/"
 PACKAGES  ?= $$($(PACKAGE_LIST))
 PACKAGES_TESTS ?= $$($(PACKAGE_LIST_TESTS))
-PACKAGE_DIRECTORIES := $(PACKAGE_LIST) | sed 's|github.com/showhand-lab/flash-metrics-storage/||'
+PACKAGE_DIRECTORIES := $(PACKAGE_LIST) | sed 's|github.com/showhand-lab/flash-metrics/||'
 FILES     := $$(find $$($(PACKAGE_DIRECTORIES)) -name "*.go")
 FAIL_ON_STDOUT := awk '{ print } END { if (NR > 0) { exit 1 } }'
 
-LDFLAGS += -X "github.com/showhand-lab/flash-metrics-storage/utils/printer.FlashMetricsBuildTS=$(shell date -u '+%Y-%m-%d %H:%M:%S')"
-LDFLAGS += -X "github.com/showhand-lab/flash-metrics-storage/utils/printer.FlashMetricsGitHash=$(shell git rev-parse HEAD)"
-LDFLAGS += -X "github.com/showhand-lab/flash-metrics-storage/utils/printer.FlashMetricsGitBranch=$(shell git rev-parse --abbrev-ref HEAD)"
+LDFLAGS += -X "github.com/showhand-lab/flash-metrics/utils/printer.FlashMetricsBuildTS=$(shell date -u '+%Y-%m-%d %H:%M:%S')"
+LDFLAGS += -X "github.com/showhand-lab/flash-metrics/utils/printer.FlashMetricsGitHash=$(shell git rev-parse HEAD)"
+LDFLAGS += -X "github.com/showhand-lab/flash-metrics/utils/printer.FlashMetricsGitBranch=$(shell git rev-parse --abbrev-ref HEAD)"
 
 GO      := GO111MODULE=on go
 GOBUILD := $(GO) build
 GOTEST  := $(GO) test -p 8
 
 default:
-	$(GOBUILD) -ldflags '$(LDFLAGS)' -o bin/flash-metrics-storage ./main.go
+	$(GOBUILD) -ldflags '$(LDFLAGS)' -o bin/flash-metrics ./main.go
 	@echo Build successfully!
 
 fmt:

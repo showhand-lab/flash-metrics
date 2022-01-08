@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/showhand-lab/flash-metrics-storage/metas"
-	"github.com/showhand-lab/flash-metrics-storage/utils"
+	"github.com/showhand-lab/flash-metrics/metas"
+	"github.com/showhand-lab/flash-metrics/utils"
 
 	"github.com/stretchr/testify/suite"
 

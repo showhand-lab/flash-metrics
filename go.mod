@@ -1,4 +1,4 @@
-module github.com/showhand-lab/flash-metrics-storage
+module github.com/showhand-lab/flash-metrics
 
 go 1.16
 

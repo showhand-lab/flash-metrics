@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/showhand-lab/flash-metrics-storage/remote"
-	"github.com/showhand-lab/flash-metrics-storage/store"
-	"github.com/showhand-lab/flash-metrics-storage/store/model"
-	"github.com/showhand-lab/flash-metrics-storage/utils"
+	"github.com/showhand-lab/flash-metrics/remote"
+	"github.com/showhand-lab/flash-metrics/store"
+	"github.com/showhand-lab/flash-metrics/store/model"
+	"github.com/showhand-lab/flash-metrics/utils"
 
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/prompb"

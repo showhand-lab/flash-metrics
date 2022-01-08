@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics/store"
 
 	"github.com/pingcap/log"
 	"github.com/pkg/errors"

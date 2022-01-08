@@ -3,9 +3,9 @@ package service
 import (
 	"net"
 
-	"github.com/showhand-lab/flash-metrics-storage/config"
-	"github.com/showhand-lab/flash-metrics-storage/service/http"
-	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics/config"
+	"github.com/showhand-lab/flash-metrics/service/http"
+	"github.com/showhand-lab/flash-metrics/store"
 
 	"github.com/pingcap/log"
 	"go.uber.org/zap"
