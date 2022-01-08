@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/showhand-lab/flash-metrics-storage/metas"
-	"github.com/showhand-lab/flash-metrics-storage/store/batch"
-	"github.com/showhand-lab/flash-metrics-storage/store/model"
+	"github.com/showhand-lab/flash-metrics/metas"
+	"github.com/showhand-lab/flash-metrics/store/batch"
+	"github.com/showhand-lab/flash-metrics/store/model"
 
 	"github.com/pingcap/log"
 	"go.uber.org/zap"

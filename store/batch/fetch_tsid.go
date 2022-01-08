@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/showhand-lab/flash-metrics-storage/metas"
-	"github.com/showhand-lab/flash-metrics-storage/table"
+	"github.com/showhand-lab/flash-metrics/metas"
+	"github.com/showhand-lab/flash-metrics/table"
 
 	"github.com/pingcap/log"
 	"go.uber.org/zap"

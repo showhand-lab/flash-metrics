@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/showhand-lab/flash-metrics-storage/remote"
-	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics/remote"
+	"github.com/showhand-lab/flash-metrics/store"
 
 	"github.com/pingcap/log"
 	"go.uber.org/zap"

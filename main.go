@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/showhand-lab/flash-metrics-storage/config"
-	"github.com/showhand-lab/flash-metrics-storage/scrape"
-	"github.com/showhand-lab/flash-metrics-storage/service"
-	"github.com/showhand-lab/flash-metrics-storage/store"
-	"github.com/showhand-lab/flash-metrics-storage/table"
-	"github.com/showhand-lab/flash-metrics-storage/utils/printer"
+	"github.com/showhand-lab/flash-metrics/config"
+	"github.com/showhand-lab/flash-metrics/scrape"
+	"github.com/showhand-lab/flash-metrics/service"
+	"github.com/showhand-lab/flash-metrics/store"
+	"github.com/showhand-lab/flash-metrics/table"
+	"github.com/showhand-lab/flash-metrics/utils/printer"
 
 	"github.com/pingcap/log"
 	"go.uber.org/zap"
