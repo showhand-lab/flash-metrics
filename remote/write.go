@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics/store"
 
 	"github.com/golang/snappy"
 	"github.com/pingcap/log"

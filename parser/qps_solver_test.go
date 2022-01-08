@@ -2,8 +2,8 @@ package parser
 
 import (
 	"github.com/pingcap/log"
-	"github.com/showhand-lab/flash-metrics-storage/store"
-	"github.com/showhand-lab/flash-metrics-storage/utils"
+	"github.com/showhand-lab/flash-metrics/store"
+	"github.com/showhand-lab/flash-metrics/utils"
 	"go.uber.org/zap"
 	"testing"
 	"time"

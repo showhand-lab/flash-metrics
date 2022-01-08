@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/showhand-lab/flash-metrics-storage/config"
-	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics/config"
+	"github.com/showhand-lab/flash-metrics/store"
 
 	"github.com/pingcap/log"
 	io_prometheus_client "github.com/prometheus/client_model/go"

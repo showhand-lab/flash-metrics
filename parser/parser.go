@@ -4,7 +4,7 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics/store"
 	"go.uber.org/zap"
 	"strconv"
 	"time"

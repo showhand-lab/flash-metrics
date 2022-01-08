@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/showhand-lab/flash-metrics-storage/table"
+	"github.com/showhand-lab/flash-metrics/table"
 
 	"github.com/hashicorp/golang-lru/simplelru"
 )

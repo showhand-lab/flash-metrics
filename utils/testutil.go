@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/showhand-lab/flash-metrics-storage/table"
+	"github.com/showhand-lab/flash-metrics/table"
 
 	_ "github.com/go-sql-driver/mysql"
 )
