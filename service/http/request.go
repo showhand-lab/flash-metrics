@@ -126,12 +126,14 @@ func QueryRangeHandler(storage store.MetricStorage) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 
-		if _, suc := result.(*promql.Matrix); suc {
-			respond(w, QueryData{
-				ResultType: promql.ValueTypeMatrix,
-				Result:     result,
-			})
+		if result == nil {
+			return
 		}
+
+		respond(w, QueryData{
+			ResultType: result.Type(),
+			Result:     result,
+		})
 		// db.execute(sql)
 	}
 }
@@ -163,6 +165,7 @@ func respond(w http.ResponseWriter, data interface{}) {
 		Status: "success",
 		Data:   data,
 	})
+	log.Info("",zap.String("json", string(b)))
 
 	if err != nil {
 		log.Warn("error marshaling json response", zap.Error(err))

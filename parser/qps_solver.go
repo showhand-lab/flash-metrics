@@ -14,10 +14,10 @@ import (
 
 const qpsPattern =
 `
-select tsid, ts-ts%? tsmod, (max(v)-min(v))/? rate_v
+select tsid, (unix_timestamp(ts)-unix_timestamp(ts)%?)*1000 tsmod, (max(v)-min(v))/? rate_v
 from flash_metrics_data
 where tsid in (?)
-and ts >= ? and ts <= ?
+and unix_timestamp(ts) >= ? and unix_timestamp(ts) <= ?
 group by tsid, tsmod
 order by tsmod
 `
@@ -70,7 +70,7 @@ func (solver *QPSSolver) GetTsIDs(storage *store.DefaultMetricStorage) (tsids_st
 select _tidb_rowid
 `)
 	groupByCount := 0
-	for _, groupByName := range  solver.groupByNames {
+	for _, groupByName := range solver.groupByNames {
 		labelID, ok := m.Labels[metas.LabelName(groupByName)]
 		if !ok {
 			log.Fatal("group by label not found!", zap.String("label", groupByName))
@@ -150,13 +150,13 @@ where metric_name = ?
 
 func (solver *QPSSolver) updateResultLabel(tsid int, lbs labels.Labels) {
 	// naive for loop, because the labels count won't be large.
-	index := -1
-	for index = range solver.result {
+	index := 0
+	for ; index < len(solver.result); index++ {
 		if reflect.DeepEqual(solver.result[index].Metric, lbs) {
 			break
 		}
 	}
-	if index > len(solver.result) {
+	if index >= len(solver.result) {
 		solver.result = append(solver.result, promql.Series{Metric: lbs})
 	}
 	solver.matrixIndexHelper[tsid] = index
@@ -167,23 +167,31 @@ func (solver *QPSSolver) ExecuteQuery(storage *store.DefaultMetricStorage) (err 
 	if err != nil {
 		return err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var tsid int
-		var tsmod int64
+		var tsmod float64
 		var value float64
 		if err = rows.Scan(&tsid, &tsmod, &value); err != nil {
+			log.Warn("",zap.Error(err))
 			return err
 		}
 
 		// assert order by tsid.
 		series := &solver.result[solver.matrixIndexHelper[tsid]]
-		if series.Points != nil && series.Points[len(series.Points)-1].T == tsmod {
+		if series.Points != nil && series.Points[len(series.Points)-1].T == int64(tsmod) {
 			series.Points[len(series.Points)-1].V += value
 		} else {
-			series.Points = append(series.Points, promql.Point{T: tsmod, V: value})
+			series.Points = append(series.Points, promql.Point{T: int64(tsmod), V: value})
 		}
 	}
+
+	// mock data
+	//i := 0
+	//	for now := solver.args[3].(int64); now <= solver.args[3].(int64) + int64(solver.args[0].(float64)) * 10; now += int64(solver.args[0].(float64)) {
+	//		solver.result[i].Points = append(solver.result[i].Points, promql.Point{T: now*1000, V: 15})
+	//	}
 
 	return nil
 }
