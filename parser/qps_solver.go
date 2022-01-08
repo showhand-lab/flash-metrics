@@ -92,8 +92,15 @@ where metric_name = ?
 	args = append(args, solver.metricName)
 
 	for _, matcher := range solver.labelMatchers {
+		if matcher.Name == "__name__" {
+			continue
+		}
+
 		labelID, ok := m.Labels[metas.LabelName(matcher.Name)]
 		if !ok {
+			if (matcher.Type == labels.MatchEqual || matcher.Type == labels.MatchRegexp) && matcher.Value == "" {
+				continue
+			}
 			log.Error("label not found!", zap.String("label", matcher.Name))
 			continue
 		}
