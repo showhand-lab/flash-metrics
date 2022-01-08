@@ -2,20 +2,22 @@ package http
 
 import (
 	"fmt"
-	jsoniter "github.com/json-iterator/go"
-	"github.com/pingcap/log"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/util/stats"
-	"github.com/showhand-lab/flash-metrics-storage/parser"
-	"github.com/showhand-lab/flash-metrics-storage/store"
-	"go.uber.org/zap"
 	"io/ioutil"
 	"math"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/showhand-lab/flash-metrics-storage/parser"
+	"github.com/showhand-lab/flash-metrics-storage/store"
+
+	jsoniter "github.com/json-iterator/go"
+	"github.com/pingcap/log"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/util/stats"
+	"go.uber.org/zap"
 )
 
 type QueryData struct {

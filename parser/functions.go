@@ -1,8 +1,9 @@
 package parser
 
 import (
-	"github.com/prometheus/prometheus/promql"
 	"time"
+
+	"github.com/prometheus/prometheus/promql"
 )
 
 func buildFunctionRate(call *promql.Call, time time.Time) (sql string, err error) {

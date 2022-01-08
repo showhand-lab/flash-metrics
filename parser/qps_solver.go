@@ -3,16 +3,18 @@ package parser
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
+
+	"github.com/showhand-lab/flash-metrics-storage/metas"
+	"github.com/showhand-lab/flash-metrics-storage/store"
+
 	"github.com/pingcap/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/showhand-lab/flash-metrics-storage/metas"
-	"github.com/showhand-lab/flash-metrics-storage/store"
 	"go.uber.org/zap"
-	"reflect"
-	"strconv"
-	"strings"
 )
 
 const qpsPattern = `
@@ -121,7 +123,7 @@ where metric_name = ?
 
 	var tsids []string
 	for rows.Next() {
-		row := make([]interface{}, groupByCount+1, groupByCount+1)
+		row := make([]interface{}, groupByCount+1)
 		for index := range row {
 			if index == 0 {
 				var i int

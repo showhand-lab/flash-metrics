@@ -1,13 +1,15 @@
 package parser
 
 import (
+	"strconv"
+	"time"
+
+	"github.com/showhand-lab/flash-metrics-storage/store"
+
 	"github.com/pingcap/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/showhand-lab/flash-metrics-storage/store"
 	"go.uber.org/zap"
-	"strconv"
-	"time"
 )
 
 func NewRangeQuery(storage store.MetricStorage, qry string, start, end time.Time, step time.Duration) (result promql.Value, err error) {

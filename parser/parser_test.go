@@ -3,13 +3,14 @@ package parser
 import (
 	"bufio"
 	"fmt"
-	"github.com/pingcap/log"
-	"go.uber.org/zap"
 	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pingcap/log"
+	"go.uber.org/zap"
 
 	_ "github.com/go-sql-driver/mysql"
 )

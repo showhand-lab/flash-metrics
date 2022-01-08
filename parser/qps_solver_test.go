@@ -1,40 +1,61 @@
 package parser
 
 import (
-	"github.com/pingcap/log"
-	"github.com/showhand-lab/flash-metrics-storage/store"
-	"github.com/showhand-lab/flash-metrics-storage/utils"
-	"go.uber.org/zap"
+	"context"
 	"testing"
 	"time"
+
+	"github.com/showhand-lab/flash-metrics-storage/store"
+	"github.com/showhand-lab/flash-metrics-storage/store/model"
+	"github.com/showhand-lab/flash-metrics-storage/utils"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestQPSSolver(t *testing.T) {
-	db, err := utils.SetupDB("test")
-	if err != nil {
-		log.Fatal("", zap.Error(err))
-	}
+	db, err := utils.SetupDB("test_qps_sovler")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, utils.TearDownDB("test_qps_sovler", db))
+	}()
 
 	metricStorage := store.NewDefaultMetricStorage(db)
+	defer metricStorage.Close()
 
-	loc, _ := time.LoadLocation("Local")
-	start, err := time.ParseInLocation("2006-01-02 15:04:05", "2022-01-08 04:07:30 +0800", loc)
-	end, err := time.ParseInLocation("2006-01-02 15:04:05", "2022-01-08 05:07:30 +0800", loc)
+	now := time.Now()
+	err = metricStorage.Store(context.Background(), model.TimeSeries{
+		Name: "tiflash_coprocessor_request_count",
+		Labels: []model.Label{{
+			Name:  "tidb_cluster",
+			Value: "",
+		}, {
+			Name:  "instance",
+			Value: "()",
+		}, {
+			Name:  "type",
+			Value: "cop",
+		}},
+		Samples: []model.Sample{{
+			TimestampMs: now.UnixNano() / int64(time.Millisecond),
+			Value:       10,
+		}},
+	})
+	require.NoError(t, err)
 
-	if _, err = NewRangeQuery(metricStorage, "sum(rate(tiflash_coprocessor_request_count{tidb_cluster=\"\", instance=~\"()\"}[1m])) by (type)",
-		start, end, 15000000000); err != nil {
-		log.Error("", zap.Error(err))
-		t.Fail()
-	}
-
+	_, err = NewRangeQuery(metricStorage, "sum(rate(tiflash_coprocessor_request_count{tidb_cluster=\"\", instance=\"()\"}[1m])) by (type)",
+		now, now.Add(1*time.Second), 15*time.Second)
+	require.NoError(t, err)
 }
 
 func TestDoQuery(t *testing.T) {
-	db, err := utils.SetupDB("test")
-	if err != nil {
-		log.Fatal("", zap.Error(err))
-	}
+	db, err := utils.SetupDB("test_do_query")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, utils.TearDownDB("test_do_query", db))
+	}()
+
 	metricStorage := store.NewDefaultMetricStorage(db)
+	defer metricStorage.Close()
 
 	solver := &QPSSolver{
 		groupByNames:  []string{"type"},
@@ -44,10 +65,7 @@ func TestDoQuery(t *testing.T) {
 	}
 
 	_, err = db.Query("select tsid, ts-ts%15 tsmod, (max(v)-min(v))/15 rate_v from flash_metrics_data where flash_metrics_data.tsid in (101,105,99,107,103,104,100,98,102,106) and ts >= 1641586050 and ts <= 1641589650 group by tsid, tsmod")
-	if err != nil {
-		log.Error("", zap.Error(err))
-		t.Fail()
-	}
+	require.NoError(t, err)
 
 	//db.Exec("use test")
 	//db.Exec("set tidb_enforce_mpp=1")
@@ -68,10 +86,6 @@ func TestDoQuery(t *testing.T) {
 	//	}
 	//}
 
-	db.Exec("use test")
-	if err = solver.ExecuteQuery(metricStorage); err != nil {
-		log.Error("", zap.Error(err))
-		t.Fail()
-	}
-
+	err = solver.ExecuteQuery(metricStorage)
+	require.NoError(t, err)
 }
