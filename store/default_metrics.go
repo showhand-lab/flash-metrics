@@ -39,7 +39,7 @@ type DefaultMetricStorage struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	db *sql.DB
+	DB *sql.DB
 
 	batchTasks chan batch.Task
 }
@@ -51,7 +51,7 @@ func NewDefaultMetricStorage(db *sql.DB) *DefaultMetricStorage {
 		MetaStorage: metas.NewDefaultMetaStorage(db),
 		ctx:         ctx,
 		cancel:      cancel,
-		db:          db,
+		DB:          db,
 		batchTasks:  make(chan batch.Task, 1024),
 	}
 
@@ -62,7 +62,7 @@ func NewDefaultMetricStorage(db *sql.DB) *DefaultMetricStorage {
 		ms.wg.Add(1)
 		worker := batch.NewInsertSampleWorker(
 			ms.ctx,
-			ms.db,
+			ms.DB,
 			ms.batchTasks,
 			insertSampleTasks,
 		)
@@ -76,7 +76,7 @@ func NewDefaultMetricStorage(db *sql.DB) *DefaultMetricStorage {
 		ms.wg.Add(1)
 		worker := batch.NewUpdateDateWorker(
 			ms.ctx,
-			ms.db,
+			ms.DB,
 			updateDateTasks,
 		)
 		go func() {
@@ -91,7 +91,7 @@ func NewDefaultMetricStorage(db *sql.DB) *DefaultMetricStorage {
 		worker := batch.NewFetchTSIDWorker(
 			ms.ctx,
 			ms.MetaStorage,
-			ms.db,
+			ms.DB,
 			ms.batchTasks,
 			updateDateTasks,
 			insertSampleTasks,
@@ -279,7 +279,7 @@ WHERE
 	*args = append(*args, time.Unix(start/1000, (start%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
 	*args = append(*args, time.Unix(end/1000, (end%1000)*1_000_000).UTC().Format("2006-01-02 15:04:05.999 -0700"))
 
-	rows, err := d.db.QueryContext(ctx, sb.String(), *args...)
+	rows, err := d.DB.QueryContext(ctx, sb.String(), *args...)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +361,7 @@ func (d *DefaultMetricStorage) insertIndex(ctx context.Context, timeSeries model
 		sb.WriteString(", ?")
 	}
 	sb.WriteString(");")
-	_, err := d.db.ExecContext(ctx, sb.String(), *args...)
+	_, err := d.DB.ExecContext(ctx, sb.String(), *args...)
 	return err
 }
 
@@ -381,7 +381,7 @@ func (d *DefaultMetricStorage) getTSID(ctx context.Context, timeSeries model.Tim
 		*args = append(*args, label.Value)
 	}
 	sb.WriteByte(';')
-	row := d.db.QueryRowContext(ctx, sb.String(), *args...)
+	row := d.DB.QueryRowContext(ctx, sb.String(), *args...)
 	var res int64
 	if err := row.Scan(&res); err != nil {
 		return 0, err
@@ -420,8 +420,7 @@ func (d *DefaultMetricStorage) insertUpdatedDate(ctx context.Context, tsid int64
 	if writeCount == 0 {
 		return nil
 	}
-
-	_, err := d.db.ExecContext(ctx, sb.String(), *args...)
+	_, err := d.DB.ExecContext(ctx, sb.String(), *args...)
 	return err
 }
 
@@ -453,6 +452,6 @@ func (d *DefaultMetricStorage) insertData(ctx context.Context, tsid int64, timeS
 		return nil
 	}
 
-	_, err := d.db.ExecContext(ctx, sb.String(), *args...)
+	_, err := d.DB.ExecContext(ctx, sb.String(), *args...)
 	return err
 }

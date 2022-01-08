@@ -6,8 +6,8 @@ web:
   address: 0.0.0.0:9977
 
 logs:
-  log_level: debug
-  # log_file: flashmetrics.log
+  log_level: info
+#  log_file: flashmetrics.log
 
 scrape_configs:
   - job_name: default job
